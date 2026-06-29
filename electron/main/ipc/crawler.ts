@@ -1,85 +1,157 @@
-import { ipcMain, dialog } from 'electron';
-import { v4 as uuidv4 } from 'uuid';
-import { getDb, persist } from '../db/index';
-import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
+import { ipcMain } from 'electron';
+import Store from 'electron-store';
+import { getEncryptionKey } from '../config';
+
+interface SearchSource {
+  id: string;
+  name: string;
+  type: 'bing' | 'serpapi' | 'custom';
+  config: {
+    apiKey?: string;
+    endpoint?: string;
+    params?: Record<string, string>;
+  };
+}
+
+interface Settings {
+  searchSources: SearchSource[];
+}
+
+const store = new Store<Settings>({
+  name: 'settings',
+  encryptionKey: getEncryptionKey(),
+});
+
+function getEnabledSearchSource(): SearchSource | undefined {
+  const sources = store.store.searchSources || [];
+  return sources.find(s => s.config?.apiKey);
+}
 
 export function registerCrawlerHandlers() {
-  ipcMain.handle('crawler:import', async (_event, format: string, data: unknown) => {
-    const db = getDb();
-    let items: Array<Record<string, unknown>> = [];
-    
-    if (format === 'json') {
-      items = data as Array<Record<string, unknown>>;
-    } else if (format === 'csv') {
-      const csv = data as string;
-      const lines = csv.split('\n').filter((l) => l.trim());
-      if (lines.length < 2) return { success: false, count: 0 };
-      const headers = lines[0].split(',').map((h) => h.trim());
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map((v) => v.trim());
-        const obj: Record<string, unknown> = {};
-        headers.forEach((h, idx) => { obj[h] = values[idx]; });
-        items.push(obj);
-      }
-    }
-
-    let count = 0;
-    for (const item of items) {
-      const id = uuidv4();
-      const stmt = db.prepare(`
-        INSERT OR IGNORE INTO companies (id, name, industry, scale, funding_stage, location_city, stability_score, promotion_clarity, tags, description, source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const result = stmt.run(
-        id,
-        item.name || item.company_name || 'Unknown',
-        item.industry || 'Unknown',
-        item.scale || 'medium',
-        item.funding_stage || item.fundingStage || null,
-        item.location_city || item.city || 'Unknown',
-        item.stability_score ?? item.stabilityScore ?? 50,
-        item.promotion_clarity ?? item.promotionClarity ?? 50,
-        JSON.stringify(item.tags || []),
-        item.description || null,
-        'import'
-      );
-      if (result.changes > 0) count++;
-    }
-    persist();
-    return { success: true, count };
-  });
-
   ipcMain.handle('crawler:getSources', async () => {
-    const db = getDb();
-    const stmt = db.prepare('SELECT * FROM data_sources ORDER BY created_at DESC');
-    return stmt.all() as Array<Record<string, unknown>>;
+    return store.store.searchSources || [];
   });
 
-  ipcMain.handle('crawler:saveSource', async (_event, config: Record<string, unknown>) => {
-    const db = getDb();
-    const id = config.id || uuidv4();
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO data_sources (id, name, type, config)
-      VALUES (?, ?, ?, ?)
-    `);
-    stmt.run(id, config.name, config.type, JSON.stringify(config));
-    persist();
-    return { id };
+  ipcMain.handle('crawler:saveSource', async (_event, source: SearchSource) => {
+    const sources = store.store.searchSources || [];
+    const idx = sources.findIndex(s => s.id === source.id);
+    if (idx >= 0) {
+      sources[idx] = source;
+    } else {
+      sources.push(source);
+    }
+    store.store.searchSources = sources;
+    store.save();
+    return source;
   });
 
-  ipcMain.handle('crawler:fetchFromApi', async (_event, sourceId: string) => {
-    const db = getDb();
-    const stmt = db.prepare('SELECT * FROM data_sources WHERE id = ?');
-    const source = stmt.get(sourceId) as Record<string, unknown> | undefined;
-    if (!source) throw new Error('Data source not found');
-    
-    const config = JSON.parse(source.config as string);
-    const response = await axios.get(config.baseUrl + (config.endpoints?.positions || '/jobs'), {
-      headers: config.headers || {},
-    });
-    
-    return response.data;
+  ipcMain.handle('crawler:searchJobs', async (_event, query: string) => {
+    const source = getEnabledSearchSource();
+    if (!source) {
+      throw new Error('未配置可用的搜索源');
+    }
+
+    if (source.type === 'bing') {
+      return searchBing(source, query);
+    }
+    if (source.type === 'serpapi') {
+      return searchSerpApi(source, query);
+    }
+    if (source.type === 'custom') {
+      return searchCustom(source, query);
+    }
+
+    throw new Error(`不支持的搜索源类型: ${source.type}`);
   });
+}
+
+async function searchBing(source: SearchSource, query: string) {
+  const apiKey = source.config.apiKey;
+  const endpoint = source.config.endpoint || 'https://api.bing.microsoft.com/v7.0/search';
+  const url = new URL(endpoint);
+  url.searchParams.set('q', query);
+  url.searchParams.set('count', '10');
+  url.searchParams.set('textDecorations', 'false');
+  url.searchParams.set('mkt', 'zh-CN');
+
+  const response = await fetch(url.toString(), {
+    headers: { 'Ocp-Apim-Subscription-Key': apiKey as string },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Bing 搜索失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const items = (data.webPages?.value || []).map((item: any, index: number) => ({
+    id: `bing-${Date.now()}-${index}`,
+    title: item.name,
+    url: item.url,
+    snippet: item.snippet,
+    source: 'bing',
+    collectedAt: new Date().toISOString(),
+  }));
+
+  return items;
+}
+
+async function searchSerpApi(source: SearchSource, query: string) {
+  const apiKey = source.config.apiKey;
+  const endpoint = source.config.endpoint || 'https://serpapi.com/search';
+  const url = new URL(endpoint);
+  url.searchParams.set('engine', 'google_jobs');
+  url.searchParams.set('q', query);
+  url.searchParams.set('api_key', apiKey as string);
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`SerpApi 搜索失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const items = (data.jobs_results || []).map((item: any, index: number) => ({
+    id: `serpapi-${Date.now()}-${index}`,
+    title: item.title,
+    company: item.company_name,
+    location: item.location,
+    url: item.link,
+    snippet: item.description,
+    source: 'serpapi',
+    collectedAt: new Date().toISOString(),
+  }));
+
+  return items;
+}
+
+async function searchCustom(source: SearchSource, query: string) {
+  const apiKey = source.config.apiKey;
+  const endpoint = source.config.endpoint;
+  if (!endpoint) {
+    throw new Error('自定义搜索源未配置 endpoint');
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`自定义搜索失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const items = (data.results || data.items || []).map((item: any, index: number) => ({
+    id: `custom-${Date.now()}-${index}`,
+    title: item.title || item.name,
+    url: item.url || item.link,
+    snippet: item.snippet || item.description,
+    source: 'custom',
+    collectedAt: new Date().toISOString(),
+  }));
+
+  return items;
 }

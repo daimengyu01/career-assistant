@@ -1,19 +1,25 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
 import { MantineProvider } from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
+import { HashRouter } from 'react-router-dom';
 import App from './App';
 import '@mantine/core/styles.css';
-import '@mantine/notifications/styles.css';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <BrowserRouter>
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  console.error('Root element not found');
+} else {
+  try {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
       <MantineProvider>
-        <Notifications position="top-right" />
-        <App />
+        <HashRouter>
+          <App />
+        </HashRouter>
       </MantineProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+    );
+    console.log('React render complete');
+  } catch (e) {
+    console.error('React render failed:', e);
+  }
+}

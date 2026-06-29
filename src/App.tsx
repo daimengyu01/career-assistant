@@ -1,90 +1,49 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { Container, Title, Text, Group, Card, SimpleGrid, ThemeIcon } from '@mantine/core';
-import { IconBrain, IconBuilding, IconSparkles, IconSettings, IconBriefcase } from '@tabler/icons-react';
-import PersonalAssessment from './components/assessment/PersonalAssessment';
-import MBTIQuestionnaire from './components/assessment/MBTIQuestionnaire';
-import BigFiveQuestionnaire from './components/assessment/BigFiveQuestionnaire';
-import InterestSurvey from './components/assessment/InterestSurvey';
-import AssessmentResult from './components/assessment/AssessmentResult';
-import SelfIntro from './components/assessment/SelfIntro';
-import ResumeUpload from './components/assessment/ResumeUpload';
-import CompanyList from './components/company/CompanyList';
-import CompanyForm from './components/company/CompanyForm';
-import CompanyDetail from './components/company/CompanyDetail';
-import RecommendationList from './components/recommendation/RecommendationList';
-import JobDiscovery from './components/recommendation/JobDiscovery';
-import ApiKeySettings from './components/settings/ApiKeySettings';
-import CrawlerConfig from './components/settings/CrawlerConfig';
-import DataSourceManager from './components/settings/DataSourceManager';
-import DataBackup from './components/settings/DataBackup';
-import Welcome from './components/common/Welcome';
+import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Container, Title, Text, Stack, Card, SimpleGrid, ThemeIcon, Button } from '@mantine/core';
+import { IconBrain, IconBuilding, IconSparkles, IconSettings } from '@tabler/icons-react';
+
+const features = [
+  { title: '个人评估', description: 'MBTI、性格、兴趣全方位测评', icon: IconBrain, color: 'blue', link: '/assessment' },
+  { title: '企业评估', description: '公司稳定性、晋升路径、行业前景', icon: IconBuilding, color: 'green', link: '/companies' },
+  { title: '智能推荐', description: '结合专业、年龄、人生路径的个性化推荐', icon: IconSparkles, color: 'violet', link: '/recommendations' },
+  { title: '系统设置', description: 'AI 配置、数据源管理、爬虫接入', icon: IconSettings, color: 'orange', link: '/settings' },
+];
 
 function HomePage() {
-  const features = [
-    {
-      title: '个人评估',
-      description: 'MBTI、性格、兴趣全方位测评，深度了解自己',
-      icon: IconBrain,
-      color: 'blue',
-      link: '/assessment',
-    },
-    {
-      title: '企业评估',
-      description: '公司稳定性、晋升路径、地域发展多维分析',
-      icon: IconBuilding,
-      color: 'green',
-      link: '/companies',
-    },
-    {
-      title: '智能推荐',
-      description: '结合专业、年龄、人生路径的个性化推荐',
-      icon: IconSparkles,
-      color: 'violet',
-      link: '/recommendations',
-    },
-    {
-      title: '系统设置',
-      description: 'AI 配置、数据源管理、爬虫接入',
-      icon: IconSettings,
-      color: 'orange',
-      link: '/settings',
-    },
-  ];
-
   return (
     <Container size="md" py="xl">
-      <Title order={1} ta="center" mb="xs">
-        CareerAssistant
-      </Title>
-      <Text ta="center" c="dimmed" mb="xl">
-        大学生求职辅助工具 - 了解自己，找到适合的公司
-      </Text>
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-        {features.map((feature) => (
-          <Card
-            key={feature.title}
-            shadow="sm"
-            padding="lg"
-            radius="md"
-            withBorder
-            component="a"
-            href={feature.link}
-            style={{ textDecoration: 'none', color: 'inherit' }}
-          >
-            <Group justify="center" mb="md">
-              <ThemeIcon size={60} radius="md" color={feature.color} variant="light">
-                <feature.icon size={30} />
-              </ThemeIcon>
-            </Group>
-            <Text fw={500} size="lg" ta="center" mb="xs">
-              {feature.title}
-            </Text>
-            <Text size="sm" c="dimmed" ta="center">
-              {feature.description}
-            </Text>
-          </Card>
-        ))}
-      </SimpleGrid>
+      <Stack gap="lg">
+        <Title order={1} ta="center">CareerAssistant</Title>
+        <Text ta="center" c="dimmed" mb="xl">大学生求职辅助工具 - 了解自己，找到适合的公司</Text>
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+          {features.map((feature) => (
+            <Card key={feature.title} shadow="sm" padding="lg" radius="md" withBorder component={Link} to={feature.link} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Stack align="center" gap="sm">
+                <ThemeIcon size={60} radius="md" color={feature.color} variant="light">
+                  <feature.icon size={30} />
+                </ThemeIcon>
+                <Text fw={500} size="lg" ta="center">{feature.title}</Text>
+                <Text size="sm" c="dimmed" ta="center">{feature.description}</Text>
+              </Stack>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
+    </Container>
+  );
+}
+
+function PlaceholderPage({ title, description }: { title: string; description: string }) {
+  return (
+    <Container size="md" py="xl">
+      <Stack gap="md">
+        <Button variant="subtle" component={Link} to="/">← 返回首页</Button>
+        <Title order={2}>{title}</Title>
+        <Text c="dimmed">{description}</Text>
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Text>该页面已接入 React 路由，后续继续完善真实业务逻辑。</Text>
+        </Card>
+      </Stack>
     </Container>
   );
 }
@@ -92,24 +51,11 @@ function HomePage() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Welcome />} />
-      <Route path="/home" element={<HomePage />} />
-      <Route path="/assessment" element={<PersonalAssessment />} />
-      <Route path="/assessment/mbti" element={<MBTIQuestionnaire />} />
-      <Route path="/assessment/bigfive" element={<BigFiveQuestionnaire />} />
-      <Route path="/assessment/interest" element={<InterestSurvey />} />
-      <Route path="/assessment/result" element={<AssessmentResult />} />
-      <Route path="/assessment/self-intro" element={<SelfIntro />} />
-      <Route path="/assessment/resume" element={<ResumeUpload />} />
-      <Route path="/companies" element={<CompanyList />} />
-      <Route path="/companies/new" element={<CompanyForm />} />
-      <Route path="/companies/:id" element={<CompanyDetail />} />
-      <Route path="/recommendations" element={<RecommendationList />} />
-      <Route path="/jobs" element={<JobDiscovery />} />
-      <Route path="/settings" element={<ApiKeySettings />} />
-      <Route path="/settings/crawler" element={<CrawlerConfig />} />
-      <Route path="/settings/data-source" element={<DataSourceManager />} />
-      <Route path="/settings/backup" element={<DataBackup />} />
+      <Route path="/" element={<HomePage />} />
+      <Route path="/assessment" element={<PlaceholderPage title="个人评估" description="MBTI、五大人格、霍兰德职业兴趣、AI 洞察分析" />} />
+      <Route path="/companies" element={<PlaceholderPage title="企业评估" description="公司稳定性、晋升清晰度、行业前景、地域发展评估" />} />
+      <Route path="/recommendations" element={<PlaceholderPage title="智能推荐" description="基于已评估企业推荐、API 智能推荐、综合推荐" />} />
+      <Route path="/settings" element={<PlaceholderPage title="系统设置" description="AI 配置、数据源管理、爬虫接入" />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

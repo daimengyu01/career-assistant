@@ -79,15 +79,16 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 900,
+    minWidth: 800,
     minHeight: 600,
+    x: 100,
+    y: 100,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
-    titleBarStyle: 'hiddenInset',
-    show: false,
   });
 
   if (isDev) {
@@ -100,17 +101,13 @@ function createWindow() {
     mainWindow.loadFile(rendererPath);
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+  // 监听加载失败，便于排查资源加载问题
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
+    console.error('页面加载失败:', code, desc);
   });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-  });
-  
-  // Log any loading errors
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.error('Failed to load:', errorCode, errorDescription);
   });
 }
 
@@ -132,9 +129,4 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
-});
-
-// Persist database on app quit
-app.on('before-quit', () => {
-  persist();
 });

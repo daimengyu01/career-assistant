@@ -23,6 +23,7 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    base: './',
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

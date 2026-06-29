@@ -3,10 +3,18 @@ import Store from 'electron-store';
 import { getEncryptionKey } from '../config';
 import axios from 'axios';
 
+interface AiProviderRecord {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  isDefault?: boolean;
+}
+
 interface Settings {
-  apiKeys: Record<string, string>;
-  aiProvider: string;
-  aiModel: string;
+  aiProviders: AiProviderRecord[];
+  activeProviderId?: string;
   prompts: Record<string, string>;
 }
 
@@ -30,44 +38,25 @@ interface AiResponse {
   finishReason?: string;
 }
 
-// DeepSeek API 调用
-async function callDeepSeek(apiKey: string, model: string, messages: AiMessage[]): Promise<AiResponse> {
-  const response = await axios.post(
-    'https://api.deepseek.com/chat/completions',
-    {
-      model: model || 'deepseek-chat',
-      messages,
-      max_tokens: 2048,
-      temperature: 0.7,
-      stream: false,
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      timeout: 60000,
-    },
-  );
-
-  const choice = response.data.choices[0];
-  return {
-    content: choice.message.content,
-    usage: {
-      promptTokens: response.data.usage.prompt_tokens,
-      completionTokens: response.data.usage.completion_tokens,
-      totalTokens: response.data.usage.total_tokens,
-    },
-    finishReason: choice.finish_reason,
-  };
+function getActiveProvider(): AiProviderRecord {
+  const settings = store.store;
+  const providers = settings.aiProviders || [];
+  if (!providers.length) {
+    throw new Error('尚未配置 AI 服务商，请先在设置中添加');
+  }
+  const active = providers.find(p => p.id === settings.activeProviderId) || providers[0];
+  if (!active.apiKey) {
+    throw new Error(`[${active.name}] 未配置 API Key`);
+  }
+  return active;
 }
 
-// OpenAI API 调用
-async function callOpenAI(apiKey: string, model: string, messages: AiMessage[]): Promise<AiResponse> {
+async function callChatCompletions(provider: AiProviderRecord, messages: AiMessage[]): Promise<AiResponse> {
+  const url = `${provider.baseUrl.replace(/\/$/, '')}/v1/chat/completions`;
   const response = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
+    url,
     {
-      model: model || 'gpt-4o-mini',
+      model: provider.model,
       messages,
       max_tokens: 2048,
       temperature: 0.7,
@@ -76,7 +65,7 @@ async function callOpenAI(apiKey: string, model: string, messages: AiMessage[]):
     {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${provider.apiKey}`,
       },
       timeout: 60000,
     },
@@ -85,11 +74,13 @@ async function callOpenAI(apiKey: string, model: string, messages: AiMessage[]):
   const choice = response.data.choices[0];
   return {
     content: choice.message.content,
-    usage: {
-      promptTokens: response.data.usage.prompt_tokens,
-      completionTokens: response.data.usage.completion_tokens,
-      totalTokens: response.data.usage.total_tokens,
-    },
+    usage: response.data.usage
+      ? {
+          promptTokens: response.data.usage.prompt_tokens,
+          completionTokens: response.data.usage.completion_tokens,
+          totalTokens: response.data.usage.total_tokens,
+        }
+      : undefined,
     finishReason: choice.finish_reason,
   };
 }
@@ -97,32 +88,12 @@ async function callOpenAI(apiKey: string, model: string, messages: AiMessage[]):
 export function registerAiHandlers() {
   ipcMain.handle('ai:chat', async (_event, messages: Array<{ role: string; content: string }>) => {
     try {
-      const settings = store.store;
-      const provider = settings.aiProvider || 'deepseek';
-      const apiKey = settings.apiKeys?.[provider];
-
-      if (!apiKey) {
-        throw new Error(`未配置 ${provider} 的 API Key，请在设置中配置`);
-      }
-
+      const provider = getActiveProvider();
       const aiMessages: AiMessage[] = messages.map((m) => ({
         role: m.role as 'system' | 'user' | 'assistant',
         content: m.content,
       }));
-
-      let response: AiResponse;
-
-      switch (provider) {
-        case 'deepseek':
-          response = await callDeepSeek(apiKey, settings.aiModel, aiMessages);
-          break;
-        case 'openai':
-          response = await callOpenAI(apiKey, settings.aiModel, aiMessages);
-          break;
-        default:
-          throw new Error(`不支持的 AI Provider: ${provider}`);
-      }
-
+      const response = await callChatCompletions(provider, aiMessages);
       return response.content;
     } catch (error) {
       console.error('AI chat error:', error);
@@ -131,14 +102,23 @@ export function registerAiHandlers() {
   });
 
   ipcMain.handle('ai:getProviders', async () => {
-    return ['deepseek', 'openai'];
+    const settings = store.store;
+    return (settings.aiProviders || []).map(p => ({ id: p.id, name: p.name, model: p.model, baseUrl: p.baseUrl }));
   });
 
-  ipcMain.handle('ai:getModels', async (_event, provider: string) => {
-    const models: Record<string, string[]> = {
-      deepseek: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
-      openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini'],
+  ipcMain.handle('ai:getModels', async () => {
+    const provider = getActiveProvider();
+    return [provider.model];
+  });
+
+  ipcMain.handle('ai:verifyProvider', async (_event, provider: AiProviderRecord) => {
+    const messages: AiMessage[] = [
+      { role: 'user', content: '请只回复：验证成功' },
+    ];
+    const response = await callChatCompletions(provider, messages);
+    return {
+      success: true,
+      content: response.content,
     };
-    return models[provider] || [];
   });
 }
