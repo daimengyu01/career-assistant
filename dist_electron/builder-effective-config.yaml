@@ -1,0 +1,27 @@
+directories:
+  output: dist_electron
+  buildResources: build
+appId: com.career-assistant.app
+productName: CareerAssistant
+files:
+  - filter:
+      - electron/**/*
+      - dist-electron/**/*
+      - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: electron/resources/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+portable:
+  artifactName: ${productName}-Portable-${version}.exe
+electronVersion: 33.4.11

@@ -1,0 +1,34 @@
+﻿
+> career-assistant@0.1.0 dist:win
+> npm run build && electron-builder --win
+
+
+> career-assistant@0.1.0 build
+> electron-vite build
+
+[36mvite v5.4.11 [32mbuilding SSR bundle for production...[36m[39m
+transforming...
+[32m✓[39m 10 modules transformed.
+node.exe : [31mx[39m Build failed in 81ms
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\代梦余\AppData\Roaming\np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([31mx[39m Build failed in 81ms:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31merror during build:
+[31mCould not resolve "../../src/services/ai/AiClient" from "electron/main/ipc/ai.ts"[31m
+file: [36mC:/Users/代梦余/AppData/Roaming/TRAE SOLO CN/ModularData/ai-agent/work-mode-projects/6a41b8987407692186d68289/c
+areer-assistant/electron/main/ipc/ai.ts[31m
+    at getRollupError (file:///C:/Users/%E4%BB%A3%E6%A2%A6%E4%BD%99/AppData/Roaming/TRAE%20SOLO%20CN/ModularData/ai-age
+nt/work-mode-projects/6a41b8987407692186d68289/career-assistant/node_modules/rollup/dist/es/shared/parseAst.js:317:41)
+    at error (file:///C:/Users/%E4%BB%A3%E6%A2%A6%E4%BD%99/AppData/Roaming/TRAE%20SOLO%20CN/ModularData/ai-agent/work-m
+ode-projects/6a41b8987407692186d68289/career-assistant/node_modules/rollup/dist/es/shared/parseAst.js:313:42)
+    at ModuleLoader.handleInvalidResolvedId (file:///C:/Users/%E4%BB%A3%E6%A2%A6%E4%BD%99/AppData/Roaming/TRAE%20SOLO%2
+0CN/ModularData/ai-agent/work-mode-projects/6a41b8987407692186d68289/career-assistant/node_modules/rollup/dist/es/share
+d/node-entry.js:22167:24)
+    at ModuleLoader.resolveDynamicImport (file:///C:/Users/%E4%BB%A3%E6%A2%A6%E4%BD%99/AppData/Roaming/TRAE%20SOLO%20CN
+/ModularData/ai-agent/work-mode-projects/6a41b8987407692186d68289/career-assistant/node_modules/rollup/dist/es/shared/n
+ode-entry.js:22227:58)
+    at async file:///C:/Users/%E4%BB%A3%E6%A2%A6%E4%BD%99/AppData/Roaming/TRAE%20SOLO%20CN/ModularData/ai-agent/work-mo
+de-projects/6a41b8987407692186d68289/career-assistant/node_modules/rollup/dist/es/shared/node-entry.js:22111:32[39m

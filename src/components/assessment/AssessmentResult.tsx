@@ -154,6 +154,9 @@ const AssessmentResult: React.FC = () => {
         <Button onClick={() => navigate('/assessment')} variant="light">
           返回评估中心
         </Button>
+        <Button onClick={() => navigate('/assessment/self-intro')}>
+          完善个人情况
+        </Button>
         <Button onClick={() => navigate('/recommendations')}>
           查看推荐
         </Button>

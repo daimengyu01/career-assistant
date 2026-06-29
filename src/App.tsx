@@ -1,15 +1,18 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Container, Title, Text, Group, Card, SimpleGrid, ThemeIcon } from '@mantine/core';
-import { IconBrain, IconBuilding, IconSparkles, IconSettings } from '@tabler/icons-react';
+import { IconBrain, IconBuilding, IconSparkles, IconSettings, IconBriefcase } from '@tabler/icons-react';
 import PersonalAssessment from './components/assessment/PersonalAssessment';
 import MBTIQuestionnaire from './components/assessment/MBTIQuestionnaire';
 import BigFiveQuestionnaire from './components/assessment/BigFiveQuestionnaire';
 import InterestSurvey from './components/assessment/InterestSurvey';
 import AssessmentResult from './components/assessment/AssessmentResult';
+import SelfIntro from './components/assessment/SelfIntro';
+import ResumeUpload from './components/assessment/ResumeUpload';
 import CompanyList from './components/company/CompanyList';
 import CompanyForm from './components/company/CompanyForm';
 import CompanyDetail from './components/company/CompanyDetail';
 import RecommendationList from './components/recommendation/RecommendationList';
+import JobDiscovery from './components/recommendation/JobDiscovery';
 import ApiKeySettings from './components/settings/ApiKeySettings';
 import CrawlerConfig from './components/settings/CrawlerConfig';
 import DataSourceManager from './components/settings/DataSourceManager';
@@ -96,10 +99,13 @@ export default function App() {
       <Route path="/assessment/bigfive" element={<BigFiveQuestionnaire />} />
       <Route path="/assessment/interest" element={<InterestSurvey />} />
       <Route path="/assessment/result" element={<AssessmentResult />} />
+      <Route path="/assessment/self-intro" element={<SelfIntro />} />
+      <Route path="/assessment/resume" element={<ResumeUpload />} />
       <Route path="/companies" element={<CompanyList />} />
       <Route path="/companies/new" element={<CompanyForm />} />
       <Route path="/companies/:id" element={<CompanyDetail />} />
       <Route path="/recommendations" element={<RecommendationList />} />
+      <Route path="/jobs" element={<JobDiscovery />} />
       <Route path="/settings" element={<ApiKeySettings />} />
       <Route path="/settings/crawler" element={<CrawlerConfig />} />
       <Route path="/settings/data-source" element={<DataSourceManager />} />

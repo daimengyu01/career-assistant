@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareerAssistant - 演示窗口</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 900px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #667eea;
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 2.5em;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 25px;
+      font-size: 1.1em;
+    }
+    .status {
+      background: #f0f9ff;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+      padding: 10px;
+      background: white;
+      border-radius: 6px;
+    }
+    .status-icon {
+      font-size: 24px;
+      margin-right: 15px;
+    }
+    .status-text {
+      flex: 1;
+    }
+    .status-label {
+      font-weight: 600;
+      color: #333;
+    }
+    .status-value {
+      color: #666;
+      font-size: 0.9em;
+      margin-top: 2px;
+    }
+    .demo-section {
+      margin-top: 25px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 12px;
+    }
+    .demo-title {
+      font-size: 1.3em;
+      color: #333;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .demo-desc {
+      color: #555;
+      margin-bottom: 15px;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .feature-card {
+      background: white;
+      padding: 18px;
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 2px solid transparent;
+      position: relative;
+    }
+    .feature-card:hover {
+      border-color: #667eea;
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.2);
+    }
+    .feature-icon {
+      font-size: 44px;
+      margin-bottom: 10px;
+    }
+    .feature-name {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    .feature-desc {
+      font-size: 0.85em;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.75em;
+      font-weight: 600;
+    }
+    .badge-free {
+      background: #e6f9ed;
+      color: #1a7f37;
+      border: 1px solid #b6e5c8;
+    }
+    .badge-pro {
+      background: #fff8e1;
+      color: #b26a00;
+      border: 1px solid #ffe2a3;
+    }
+    .api-notice {
+      background: #fff8e1;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 8px;
+      color: #5c4a00;
+    }
+    .api-notice strong {
+      color: #3e2f00;
+    }
+    .notice-list {
+      margin-top: 8px;
+      padding-left: 18px;
+      color: #5c4a00;
+    }
+    .notice-list li {
+      margin: 4px 0;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      cursor: pointer;
+      margin-top: 20px;
+      width: 100%;
+      font-weight: 600;
+    }
+    .btn:hover {
+      opacity: 0.9;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 CareerAssistant</h1>
+    <p class="subtitle">大学生求职辅助工具 - 演示窗口</p>
+
+    <div class="status">
+      <div class="status-item">
+        <div class="status-icon">✅</div>
+        <div class="status-text">
+          <div class="status-label">应用状态</div>
+          <div class="status-value">已成功启动，界面正常显示</div>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-icon">📊</div>
+        <div class="status-text">
+          <div class="status-label">数据库</div>
+          <div class="status-value">SQLite 已就绪</div>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-icon">🔧</div>
+        <div class="status-text">
+          <div class="status-label">当前模式</div>
+          <div class="status-value">演示模式（无需 API Key 即可体验基础功能）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="demo-title">📋 核心功能演示</div>
+      <p class="demo-desc">点击卡片可查看功能说明；黄色标签表示该功能需要配置 API Key。</p>
+
+      <div class="feature-grid">
+        <div class="feature-card" onclick="alert('MBTI 测试：28 道题目，5 分钟了解你的性格类型')">
+          <div class="feature-icon">🧠</div>
+          <div class="feature-name">MBTI 测试</div>
+          <div class="feature-desc">28 题性格分析</div>
+          <span class="badge badge-free">免 API Key</span>
+        </div>
+
+        <div class="feature-card" onclick="alert('五大人格：开放性、尽责性、外向性、宜人性、神经质')">
+          <div class="feature-icon">👤</div>
+          <div class="feature-name">人格分析</div>
+          <div class="feature-desc">五大维度评估</div>
+          <span class="badge badge-free">免 API Key</span>
+        </div>
+
+        <div class="feature-card" onclick="alert('霍兰德职业兴趣：发现你的职业倾向和适合的行业')">
+          <div class="feature-icon">💡</div>
+          <div class="feature-name">兴趣探索</div>
+          <div class="feature-desc">职业兴趣测试</div>
+          <span class="badge badge-free">免 API Key</span>
+        </div>
+
+        <div class="feature-card" onclick="alert('企业评估：公司稳定性、晋升路径、行业前景分析')">
+          <div class="feature-icon">🏢</div>
+          <div class="feature-name">企业评估</div>
+          <div class="feature-desc">公司多维分析</div>
+          <span class="badge badge-free">免 API Key</span>
+        </div>
+
+        <div class="feature-card" onclick="alert('智能推荐：基于你的专业、性格、兴趣推荐适合的公司')">
+          <div class="feature-icon">⭐</div>
+          <div class="feature-name">智能推荐</div>
+          <div class="feature-desc">AI 个性化推荐</div>
+          <span class="badge badge-pro">需要 API Key</span>
+        </div>
+
+        <div class="feature-card" onclick="alert('数据管理：支持 JSON/CSV 导入，本地存储保护隐私')">
+          <div class="feature-icon">📁</div>
+          <div class="feature-name">数据管理</div>
+          <div class="feature-desc">导入导出数据</div>
+          <span class="badge badge-free">免 API Key</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="api-notice">
+      <strong>💡 使用提醒：</strong>
+      <ol class="notice-list">
+        <li><strong>免 API Key 可用：</strong>个人评估、企业评估、数据管理</li>
+        <li><strong>需要 API Key：</strong>智能推荐、AI 洞察</li>
+        <li>你可以在 <strong>设置 → API Key 配置</strong> 中添加 DeepSeek 或 OpenAI 的 API Key</li>
+        <li>没有 API Key 也能先完成评估、添加公司，基础功能不受影响</li>
+      </ol>
+    </div>
+
+    <button class="btn" onclick="window.close()">关闭演示窗口</button>
+  </div>
+
+  <script>
+    console.log('CareerAssistant 演示页面已加载');
+    console.log('Electron:', process.versions.electron || 'N/A');
+    console.log('Node:', process.versions.node || 'N/A');
+    console.log('Chrome:', process.versions.chrome || 'N/A');
+  </script>
+</body>
+</html>

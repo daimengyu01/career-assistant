@@ -16,6 +16,13 @@ export interface UserProfile {
   interests: string[];
   careerGoals?: string;
   riskPreference: 'conservative' | 'balanced' | 'aggressive';
+  selfIntro?: string;
+  resume?: {
+    fileName?: string;
+    filePath?: string;
+    extractedText?: string;
+  };
+  assessmentUnlocked: boolean;
   createdAt: string;
   updatedAt: string;
 }

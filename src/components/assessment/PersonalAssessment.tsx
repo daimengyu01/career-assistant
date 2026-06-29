@@ -1,7 +1,7 @@
 import React from 'react';
 import { Container, Title, Text, SimpleGrid, Button, Group, ThemeIcon, Stack, Paper } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { IconBrain, IconHeart, IconChartBar, IconArrowRight } from '@tabler/icons-react';
+import { IconBrain, IconHeart, IconChartBar, IconArrowRight, IconStar } from '@tabler/icons-react';
 import { useUserStore } from '../../stores/useUserStore';
 import CardComponent from '../common/Card';
 
@@ -13,6 +13,14 @@ const assessments = [
     color: 'blue',
     link: '/assessment/mbti',
     duration: '约 5 分钟',
+  },
+  {
+    title: '五大人格测试',
+    description: '30 道题目，全面评估开放性、尽责性、外向性、宜人性、神经质',
+    icon: IconStar,
+    color: 'teal',
+    link: '/assessment/bigfive',
+    duration: '约 6 分钟',
   },
   {
     title: '霍兰德职业兴趣',

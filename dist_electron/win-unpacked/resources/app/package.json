@@ -1,0 +1,25 @@
+{
+  "name": "career-assistant",
+  "version": "0.1.0",
+  "description": "大学生求职辅助桌面软件",
+  "main": "./out/main/index.js",
+  "author": "Career Assistant Team",
+  "license": "MIT",
+  "dependencies": {
+    "@mantine/core": "^7.15.0",
+    "@mantine/hooks": "^7.15.0",
+    "@mantine/notifications": "^7.15.0",
+    "@tabler/icons-react": "^3.21.0",
+    "axios": "^1.7.7",
+    "date-fns": "^4.1.0",
+    "electron-store": "^8.2.0",
+    "mantine-react-table": "^2.0.0-beta.9",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^6.28.0",
+    "sql.js": "^1.10.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.23.8",
+    "zustand": "^5.0.0"
+  }
+}
