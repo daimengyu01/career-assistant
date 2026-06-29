@@ -3,6 +3,7 @@ import { Container, Title, Text, Group, Card, SimpleGrid, ThemeIcon } from '@man
 import { IconBrain, IconBuilding, IconSparkles, IconSettings } from '@tabler/icons-react';
 import PersonalAssessment from './components/assessment/PersonalAssessment';
 import MBTIQuestionnaire from './components/assessment/MBTIQuestionnaire';
+import BigFiveQuestionnaire from './components/assessment/BigFiveQuestionnaire';
 import InterestSurvey from './components/assessment/InterestSurvey';
 import AssessmentResult from './components/assessment/AssessmentResult';
 import CompanyList from './components/company/CompanyList';
@@ -12,6 +13,8 @@ import RecommendationList from './components/recommendation/RecommendationList';
 import ApiKeySettings from './components/settings/ApiKeySettings';
 import CrawlerConfig from './components/settings/CrawlerConfig';
 import DataSourceManager from './components/settings/DataSourceManager';
+import DataBackup from './components/settings/DataBackup';
+import Welcome from './components/common/Welcome';
 
 function HomePage() {
   const features = [
@@ -86,9 +89,11 @@ function HomePage() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route path="/" element={<Welcome />} />
+      <Route path="/home" element={<HomePage />} />
       <Route path="/assessment" element={<PersonalAssessment />} />
       <Route path="/assessment/mbti" element={<MBTIQuestionnaire />} />
+      <Route path="/assessment/bigfive" element={<BigFiveQuestionnaire />} />
       <Route path="/assessment/interest" element={<InterestSurvey />} />
       <Route path="/assessment/result" element={<AssessmentResult />} />
       <Route path="/companies" element={<CompanyList />} />
@@ -98,6 +103,7 @@ export default function App() {
       <Route path="/settings" element={<ApiKeySettings />} />
       <Route path="/settings/crawler" element={<CrawlerConfig />} />
       <Route path="/settings/data-source" element={<DataSourceManager />} />
+      <Route path="/settings/backup" element={<DataBackup />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

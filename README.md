@@ -69,6 +69,15 @@ npm run dist:win
 npx electron out/main/index.js
 ```
 
+### 新手引导
+
+首次打开应用会自动进入新手引导界面，引导你完成：
+1. 完成个人评估（MBTI、五大人格、霍兰德兴趣）
+2. 添加目标公司
+3. 查看智能推荐
+
+详细教程请查看 [GETTING_STARTED.md](GETTING_STARTED.md)
+
 ## 📸 应用截图
 
 > 应用界面截图
