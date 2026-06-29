@@ -2,7 +2,7 @@
   "name": "career-assistant",
   "version": "0.1.0",
   "description": "大学生求职辅助桌面软件",
-  "main": "./electron/main/index.ts",
+  "main": "./out/main/index.js",
   "author": "Career Assistant Team",
   "license": "MIT",
   "scripts": {
@@ -37,24 +37,34 @@
     "@types/react-dom": "^19.0.0",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^3.1.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.0",
+    "electron-vite": "^2.3.0",
     "eslint": "^9.15.0",
     "prettier": "^3.3.3",
     "typescript": "^5.6.0",
-    "vite": "^6.0.0"
+    "vite": "^5.4.11"
   },
   "build": {
     "appId": "com.career-assistant.app",
     "productName": "CareerAssistant",
     "directories": {
-      "output": "dist_electron"
+      "output": "dist_electron",
+      "buildResources": "electron/resources"
     },
     "files": [
       "electron/**/*",
+      "out/main/**/*",
+      "out/preload/**/*",
       "dist-electron/**/*",
+      "node_modules/sql.js/dist/sql-wasm.wasm",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/resources",
+        "to": "resources"
+      }
     ],
     "win": {
       "target": [
@@ -71,7 +81,7 @@
           ]
         }
       ],
-      "icon": "electron/resources/icon.ico"
+      "sign": false
     },
     "nsis": {
       "oneClick": false,
@@ -81,6 +91,8 @@
     },
     "portable": {
       "artifactName": "${productName}-Portable-${version}.exe"
-    }
+    },
+    "forceCodeSigning": false,
+    "asar": false
   }
 }

@@ -5,10 +5,22 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v0.1.0)'
+        required: false
+        default: ''
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+      WIN_CODESIGN_SKIP: 1
+      ELECTRON_BUILDER_SKIP_WINCODE_SIGN: 1
     steps:
       - uses: actions/checkout@v4
       
@@ -30,15 +42,28 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: dist_electron/*.exe
+          name: windows-installers
+          path: |
+            dist_electron/*.exe
+            dist_electron/*.nsis*
+          retention-days: 30
+      
+      - name: Upload unpacked build
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: dist_electron/win-unpacked/**
           retention-days: 30
       
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.version != ''
         uses: softprops/action-gh-release@v1
         with:
-          files: dist_electron/*.exe
+          files: |
+            dist_electron/*.exe
+            dist_electron/*.nsis*
           generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
