@@ -70,7 +70,14 @@ const DataSourceManager: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这个数据源吗？')) return;
-    setDataSources((prev) => prev.filter((d) => d.id !== id));
+    try {
+      if (window.electronAPI?.deleteDataSource) {
+        await window.electronAPI.deleteDataSource(id);
+      }
+      setDataSources((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      setError('删除数据源失败');
+    }
   };
 
   const handleImport = async (file: File | null) => {
@@ -92,30 +99,21 @@ const DataSourceManager: React.FC = () => {
       reader.onload = async (e) => {
         try {
           const content = e.target?.result as string;
-          let data;
-          
-          if (file.name.endsWith('.json')) {
-            data = JSON.parse(content);
-          } else if (file.name.endsWith('.csv')) {
-            const lines = content.split('\n').filter((line) => line.trim());
-            const headers = lines[0].split(',');
-            data = lines.slice(1).map((line) => {
-              const values = line.split(',');
-              const obj: Record<string, unknown> = {};
-              headers.forEach((header, index) => {
-                obj[header.trim()] = values[index]?.trim() || '';
-              });
-              return obj;
-            });
-          } else {
+          const format = file.name.endsWith('.json')
+            ? 'json'
+            : file.name.endsWith('.csv')
+              ? 'csv'
+              : null;
+
+          if (!format) {
             throw new Error('不支持的文件格式');
           }
 
           setImportProgress(60);
 
+          // 使用正确的 IPC：crawler:import（importData），将原始文本交由后端解析 JSON/CSV
           if (window.electronAPI?.importData) {
-            const format = file.name.endsWith('.json') ? 'json' : 'csv';
-            const result = await window.electronAPI.importData(format, data);
+            const result = await window.electronAPI.importData(format, content);
             
             if (result.success) {
               setImportProgress(100);
@@ -128,6 +126,8 @@ const DataSourceManager: React.FC = () => {
             } else {
               setError('导入失败');
             }
+          } else {
+            setError('导入功能不可用');
           }
         } catch (err) {
           setError('解析文件失败');

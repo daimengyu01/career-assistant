@@ -7,6 +7,7 @@ import { registerCrawlerHandlers } from './ipc/crawler';
 import { registerSettingsHandlers } from './ipc/settings';
 import { registerAiHandlers } from './ipc/ai';
 import { registerBackupHandlers } from './ipc/backup';
+import { registerUserHandlers } from './ipc/user';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -120,6 +121,7 @@ app.whenReady().then(async () => {
   registerSettingsHandlers();
   registerAiHandlers();
   registerBackupHandlers();
+  registerUserHandlers();
   createWindow();
 
   app.on('activate', () => {

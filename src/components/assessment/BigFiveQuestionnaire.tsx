@@ -105,12 +105,36 @@ const BigFiveQuestionnaire: React.FC = () => {
 
     try {
       const result = calculateResult();
-      
+
+      // 生成 AI insights（不阻塞主流程）
+      let aiInsights: string | undefined;
+      try {
+        if (window.electronAPI?.chatWithAI) {
+          const dimensionDesc = `开放性:${result.dimensions.openness}%, 尽责性:${result.dimensions.conscientiousness}%, 外向性:${result.dimensions.extraversion}%, 宜人性:${result.dimensions.agreeableness}%, 神经质:${result.dimensions.neuroticism}%`;
+          const prompt = `你是一位职业规划专家。用户完成了大五人格测评，结果如下：${dimensionDesc}。请用中文分析：1. 该人格特质的职业优势 2. 适合的职业方向 3. 需要注意的短板。请用 JSON 格式返回：{"strengths": [...], "careers": [...], "cautions": [...]}`;
+          const aiResponse = await window.electronAPI.chatWithAI([
+            { role: 'user', content: prompt },
+          ]);
+          // 验证返回内容为合法 JSON（兼容 markdown 代码块包裹）
+          let jsonStr = aiResponse.trim();
+          const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (codeBlockMatch) {
+            jsonStr = codeBlockMatch[1].trim();
+          }
+          JSON.parse(jsonStr);
+          aiInsights = jsonStr;
+        }
+      } catch (aiErr) {
+        // AI 调用失败，不阻塞跳转
+        console.warn('AI insights 生成失败:', aiErr);
+      }
+
       const assessmentResult = {
         id: Date.now().toString(),
         userId: profile?.id || 'guest',
         type: 'personality' as const,
         data: result,
+        aiInsights,
         createdAt: new Date().toISOString(),
       };
 
@@ -129,7 +153,7 @@ const BigFiveQuestionnaire: React.FC = () => {
         });
       }
 
-      navigate('/assessment/result', { state: { result: assessmentResult } });
+      navigate('/assessment/result', { state: { result: assessmentResult, aiInsights } });
     } catch (err) {
       setError('保存评估结果失败，请重试');
     }

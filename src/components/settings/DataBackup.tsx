@@ -47,8 +47,8 @@ const DataBackup: React.FC = () => {
       const text = await importFile.text();
       const data = JSON.parse(text);
 
-      if (window.electronAPI?.importData) {
-        const result = await window.electronAPI.importData('json', data);
+      if (window.electronAPI?.importDataBackup) {
+        const result = await window.electronAPI.importDataBackup(data);
         if (result.success) {
           setSuccess(`成功导入 ${result.count} 条数据`);
           setImportFile(null);

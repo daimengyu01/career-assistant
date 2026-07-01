@@ -1,108 +1,139 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Title, Text, Stack, Button, Group, TextInput, NumberInput, Card, Alert, Table, ActionIcon, Tooltip, Grid, Badge } from '@mantine/core';
+import React, { useState } from 'react';
+import {
+  Container,
+  Title,
+  Text,
+  Stack,
+  Button,
+  Group,
+  TextInput,
+  NumberInput,
+  Card,
+  Alert,
+  Badge,
+  Grid,
+  Divider,
+} from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { IconArrowLeft, IconSettings, IconPlayerPlay, IconPlayerStop, IconTrash } from '@tabler/icons-react';
+import {
+  IconArrowLeft,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconBug,
+  IconCheck,
+} from '@tabler/icons-react';
+
+interface CrawlerForm {
+  name: string;
+  targetUrl: string;
+  maxPages: number;
+  cardSelector: string;
+  requestInterval: number;
+  userAgent: string;
+}
+
+const DEFAULT_FORM: CrawlerForm = {
+  name: '',
+  targetUrl: '',
+  maxPages: 5,
+  cardSelector: '',
+  requestInterval: 1500,
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+};
+
+const PRESETS: Record<string, { label: string; form: Partial<CrawlerForm> }> = {
+  boss: {
+    label: 'Boss直聘',
+    form: {
+      name: 'Boss直聘',
+      targetUrl: 'https://www.zhipin.com/web/geek/job?query=前端&city=101010100',
+      cardSelector: '.job-card-wrapper',
+    },
+  },
+  lagou: {
+    label: '拉勾',
+    form: {
+      name: '拉勾',
+      targetUrl: 'https://www.lagou.com/wn/zhaopin?city=%E5%85%A8%E5%9B%BD&pn=1',
+      cardSelector: '.item__10RTO',
+    },
+  },
+  zhilian: {
+    label: '智联',
+    form: {
+      name: '智联',
+      targetUrl: 'https://sou.zhaopin.com/?jl=530&kw=前端&p=1',
+      cardSelector: '.joblist-box__item',
+    },
+  },
+};
 
 const CrawlerConfig: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [form, setForm] = useState<CrawlerForm>(DEFAULT_FORM);
+  const [status, setStatus] = useState<'idle' | 'running' | 'done'>('idle');
+  const [resultCount, setResultCount] = useState<number>(0);
+  const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [crawlers, setCrawlers] = useState<Array<{ id: string; name: string; status: 'running' | 'stopped'; lastRun?: string }>>([]);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
-    crawlerName: '',
-    targetUrl: '',
-    schedule: '0 2 * * *',
-    maxPages: 100,
-    concurrentRequests: 5,
-    useProxy: false,
-    proxyUrl: '',
-    userAgent: 'CareerAssistant-Crawler/1.0',
-  });
-
-  useEffect(() => {
-    loadCrawlers();
-  }, []);
-
-  const loadCrawlers = async () => {
-    try {
-      if (window.electronAPI?.getDataSources) {
-        const data = await window.electronAPI.getDataSources();
-        const sources = data as Array<{ id: string; name: string; type: string }>;
-        setCrawlers(
-          sources.map((s) => ({
-            id: s.id,
-            name: s.name,
-            status: 'stopped' as const,
-          }))
-        );
-      }
-    } catch (err) {
-      setError('加载爬虫列表失败');
-    }
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const applyPreset = (key: string) => {
+    const preset = PRESETS[key];
+    if (!preset) return;
+    setForm((prev) => ({ ...prev, ...preset.form }));
     setError(null);
-    setSaved(false);
+    setSuccess(null);
+  };
+
+  const handleRun = async () => {
+    if (!form.targetUrl || !form.cardSelector) {
+      setError('请填写目标 URL 和职位卡片 CSS 选择器');
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setRunning(true);
+    setStatus('running');
+    setResultCount(0);
 
     try {
-      const crawlerConfig = {
-        id: Date.now().toString(),
-        name: form.crawlerName,
-        type: 'script',
-        config: {
-          targetUrl: form.targetUrl,
-          schedule: form.schedule,
-          maxPages: form.maxPages,
-          concurrentRequests: form.concurrentRequests,
-          useProxy: form.useProxy,
-          proxyUrl: form.proxyUrl,
-          userAgent: form.userAgent,
-        },
-        createdAt: new Date().toISOString(),
+      const config = {
+        name: form.name,
+        targetUrl: form.targetUrl,
+        maxPages: form.maxPages,
+        cardSelector: form.cardSelector,
+        requestInterval: form.requestInterval,
+        userAgent: form.userAgent,
       };
-
-      if (window.electronAPI?.saveDataSource) {
-        await window.electronAPI.saveDataSource(crawlerConfig);
-      }
-
-      setCrawlers((prev) => [...prev, { id: crawlerConfig.id, name: crawlerConfig.name, status: 'stopped' }]);
-      setForm({
-        crawlerName: '',
-        targetUrl: '',
-        schedule: '0 2 * * *',
-        maxPages: 100,
-        concurrentRequests: 5,
-        useProxy: false,
-        proxyUrl: '',
-        userAgent: 'CareerAssistant-Crawler/1.0',
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      const result = await window.electronAPI?.runCrawler?.(config);
+      const count = Number(result?.count) || 0;
+      setResultCount(count);
+      setStatus('done');
+      setSuccess(`爬虫运行完成，共抓取 ${count} 条结果。`);
     } catch (err) {
-      setError('保存爬虫配置失败');
+      setStatus('idle');
+      setError('爬虫运行失败：' + (err as Error).message);
     } finally {
-      setLoading(false);
+      setRunning(false);
     }
   };
 
-  const handleRun = (id: string) => {
-    setCrawlers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: 'running' as const, lastRun: new Date().toLocaleString('zh-CN') } : c))
-    );
+  const handleStop = () => {
+    setStatus('idle');
+    setRunning(false);
+    setSuccess('已停止爬虫。');
   };
 
-  const handleStop = (id: string) => {
-    setCrawlers((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'stopped' as const } : c)));
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个爬虫配置吗？')) return;
-    setCrawlers((prev) => prev.filter((c) => c.id !== id));
+  const statusBadge = () => {
+    switch (status) {
+      case 'running':
+        return <Badge color="green" variant="light" size="lg">运行中</Badge>;
+      case 'done':
+        return <Badge color="blue" variant="light" size="lg">已完成</Badge>;
+      default:
+        return <Badge color="gray" variant="light" size="lg">空闲</Badge>;
+    }
   };
 
   return (
@@ -112,9 +143,7 @@ const CrawlerConfig: React.FC = () => {
           <Title order={2} mb="xs">
             爬虫配置
           </Title>
-          <Text c="dimmed">
-            配置数据采集爬虫，自动抓取企业信息
-          </Text>
+          <Text c="dimmed">配置数据采集爬虫，自动抓取企业信息与职位</Text>
         </div>
         <Button variant="default" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/settings')}>
           返回设置
@@ -122,132 +151,135 @@ const CrawlerConfig: React.FC = () => {
       </Group>
 
       {error && (
-        <Alert color="red" mb="lg" title="错误">
+        <Alert color="red" mb="lg" title="错误" icon={<IconBug size={16} />}>
           {error}
         </Alert>
       )}
-
-      {saved && (
-        <Alert color="green" mb="lg" title="成功" icon={<IconPlayerPlay size={16} />}>
-          爬虫配置已保存
+      {success && (
+        <Alert color="green" mb="lg" title="成功" icon={<IconCheck size={16} />}>
+          {success}
         </Alert>
       )}
 
+      {/* 预置模板 */}
       <Card withBorder shadow="sm" radius="md" padding="lg" mb="lg">
-        <Title order={4} mb="md">爬虫列表</Title>
-        {crawlers.length === 0 ? (
-          <Stack align="center" gap="md" py="xl">
-            <IconSettings size={48} color="gray" />
-            <Text c="dimmed">暂无爬虫配置</Text>
-            <Button onClick={() => navigate('/settings/data-source')}>创建第一个</Button>
-          </Stack>
-        ) : (
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>名称</Table.Th>
-                <Table.Th>状态</Table.Th>
-                <Table.Th>上次运行</Table.Th>
-                <Table.Th>操作</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {crawlers.map((crawler) => (
-                <Table.Tr key={crawler.id}>
-                  <Table.Td>{crawler.name}</Table.Td>
-                  <Table.Td>
-                    <Badge color={crawler.status === 'running' ? 'green' : 'gray'} variant="light">
-                      {crawler.status === 'running' ? '运行中' : '已停止'}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{crawler.lastRun || '-'}</Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      {crawler.status === 'stopped' ? (
-                        <Tooltip label="运行">
-                          <ActionIcon variant="light" color="green" onClick={() => handleRun(crawler.id)}>
-                            <IconPlayerPlay size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip label="停止">
-                          <ActionIcon variant="light" color="red" onClick={() => handleStop(crawler.id)}>
-                            <IconPlayerStop size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      )}
-                      <Tooltip label="删除">
-                        <ActionIcon variant="light" color="red" onClick={() => handleDelete(crawler.id)}>
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
+        <Group gap="md" mb="md">
+          <IconBug size={24} color="orange" />
+          <div>
+            <Title order={4}>预置模板</Title>
+            <Text size="sm" c="dimmed">
+              选择模板自动填充目标 URL 和 CSS 选择器
+            </Text>
+          </div>
+        </Group>
+        <Group gap="xs">
+          {Object.entries(PRESETS).map(([key, preset]) => (
+            <Button key={key} variant="light" onClick={() => applyPreset(key)}>
+              {preset.label}
+            </Button>
+          ))}
+        </Group>
       </Card>
 
-      <form onSubmit={handleSave}>
-        <Card withBorder shadow="sm" radius="md" padding="lg">
-          <Title order={4} mb="md">新建爬虫</Title>
+      {/* 配置表单 */}
+      <Card withBorder shadow="sm" radius="md" padding="lg" mb="lg">
+        <Stack gap="md">
+          <TextInput
+            label="爬虫名称"
+            placeholder="例如：Boss直聘职位采集"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
+          />
 
-          <Stack gap="md">
-            <TextInput
-              label="爬虫名称"
-              placeholder="例如：BOSS直聘职位采集"
-              value={form.crawlerName}
-              onChange={(e) => setForm({ ...form, crawlerName: e.currentTarget.value })}
-              required
-            />
+          <TextInput
+            label="目标 URL"
+            placeholder="https://www.zhipin.com"
+            value={form.targetUrl}
+            onChange={(e) => setForm({ ...form, targetUrl: e.currentTarget.value })}
+            required
+          />
 
-            <TextInput
-              label="目标 URL"
-              placeholder="https://www.zhipin.com"
-              value={form.targetUrl}
-              onChange={(e) => setForm({ ...form, targetUrl: e.currentTarget.value })}
-              required
-            />
+          <TextInput
+            label="职位卡片 CSS 选择器"
+            placeholder="例如：.job-card-wrapper"
+            description="用于定位页面中单个职位卡片的 CSS 选择器"
+            value={form.cardSelector}
+            onChange={(e) => setForm({ ...form, cardSelector: e.currentTarget.value })}
+            required
+          />
 
-            <TextInput
-              label="定时表达式 (Cron)"
-              placeholder="0 2 * * *"
-              description="每天凌晨 2 点执行"
-              value={form.schedule}
-              onChange={(e) => setForm({ ...form, schedule: e.currentTarget.value })}
-            />
+          <Grid>
+            <Grid.Col span={6}>
+              <NumberInput
+                label="最大页数"
+                min={1}
+                max={1000}
+                value={form.maxPages}
+                onChange={(val) => setForm({ ...form, maxPages: Number(val) || 1 })}
+              />
+            </Grid.Col>
+            <Grid.Col span={6}>
+              <NumberInput
+                label="请求间隔 (ms)"
+                min={0}
+                max={60000}
+                step={100}
+                value={form.requestInterval}
+                onChange={(val) => setForm({ ...form, requestInterval: Number(val) || 0 })}
+              />
+            </Grid.Col>
+          </Grid>
 
-            <Grid>
-              <Grid.Col span={6}>
-                <NumberInput
-                  label="最大页面数"
-                  min={1}
-                  max={1000}
-                  value={form.maxPages}
-                  onChange={(val) => setForm({ ...form, maxPages: Number(val) || 100 })}
-                />
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <NumberInput
-                  label="并发请求数"
-                  min={1}
-                  max={20}
-                  value={form.concurrentRequests}
-                  onChange={(val) => setForm({ ...form, concurrentRequests: Number(val) || 5 })}
-                />
-              </Grid.Col>
-            </Grid>
+          <TextInput
+            label="User-Agent"
+            placeholder="Mozilla/5.0 ..."
+            value={form.userAgent}
+            onChange={(e) => setForm({ ...form, userAgent: e.currentTarget.value })}
+          />
+        </Stack>
+      </Card>
 
-            <Group justify="flex-end">
-              <Button type="submit" loading={loading}>
-                保存配置
-              </Button>
+      {/* 运行状态与控制 */}
+      <Card withBorder shadow="sm" radius="md" padding="lg">
+        <Stack gap="md">
+          <Group justify="space-between" align="center">
+            <Group gap="md">
+              <div>
+                <Text size="sm" c="dimmed">
+                  运行状态
+                </Text>
+                <Group gap="sm" mt={4}>
+                  {statusBadge()}
+                  {status === 'done' && (
+                    <Text size="sm" fw={500}>
+                      结果数量：{resultCount}
+                    </Text>
+                  )}
+                </Group>
+              </div>
             </Group>
-          </Stack>
-        </Card>
-      </form>
+            <Group>
+              {status === 'running' ? (
+                <Button color="red" leftSection={<IconPlayerStop size={16} />} onClick={handleStop}>
+                  停止
+                </Button>
+              ) : (
+                <Button leftSection={<IconPlayerPlay size={16} />} loading={running} onClick={handleRun}>
+                  运行爬虫
+                </Button>
+              )}
+            </Group>
+          </Group>
+
+          <Divider />
+
+          <Alert color="blue" variant="light" title="使用说明">
+            <Text size="sm">
+              填写目标 URL 与职位卡片 CSS 选择器后点击“运行爬虫”。运行过程中可随时点击“停止”将状态重置为空闲。运行完成后会显示抓取到的结果数量。
+            </Text>
+          </Alert>
+        </Stack>
+      </Card>
     </Container>
   );
 };

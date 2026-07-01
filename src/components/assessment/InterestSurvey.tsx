@@ -42,6 +42,15 @@ const questions: Question[] = [
   { id: 28, text: '我喜欢倾听他人的烦恼并给予建议', category: 'S' },
 ];
 
+const hollandLabels: Record<string, string> = {
+  R: '现实型',
+  I: '研究型',
+  A: '艺术型',
+  S: '社会型',
+  E: '企业型',
+  C: '常规型',
+};
+
 const InterestSurvey: React.FC = () => {
   const navigate = useNavigate();
   const addResult = useAssessmentStore((state) => state.addResult);
@@ -68,6 +77,7 @@ const InterestSurvey: React.FC = () => {
       .sort((a, b) => b[1] - a[1])
       .map(([key, value]) => ({
         category: key,
+        label: hollandLabels[key] || key,
         score: value,
       }));
   };
@@ -83,12 +93,37 @@ const InterestSurvey: React.FC = () => {
     try {
       const result = calculateResult();
       const primaryType = result[0].category;
+      const primaryLabel = result[0].label;
+
+      // 生成 AI insights（不阻塞主流程）
+      let aiInsights: string | undefined;
+      try {
+        if (window.electronAPI?.chatWithAI) {
+          const scoresDesc = result.map((r) => `${r.label}(${r.category}):${r.score}分`).join('、');
+          const prompt = `你是一位职业规划专家。用户完成了霍兰德职业兴趣测评，主要兴趣类型为：${primaryLabel}（${primaryType}）。各类型得分：${scoresDesc}。请用中文分析：1. 该兴趣类型的职业优势 2. 适合的职业方向 3. 需要注意的短板。请用 JSON 格式返回：{"strengths": [...], "careers": [...], "cautions": [...]}`;
+          const aiResponse = await window.electronAPI.chatWithAI([
+            { role: 'user', content: prompt },
+          ]);
+          // 验证返回内容为合法 JSON（兼容 markdown 代码块包裹）
+          let jsonStr = aiResponse.trim();
+          const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (codeBlockMatch) {
+            jsonStr = codeBlockMatch[1].trim();
+          }
+          JSON.parse(jsonStr);
+          aiInsights = jsonStr;
+        }
+      } catch (aiErr) {
+        // AI 调用失败，不阻塞跳转
+        console.warn('AI insights 生成失败:', aiErr);
+      }
 
       const assessmentResult = {
         id: Date.now().toString(),
         userId: profile?.id || 'guest',
         type: 'interest' as const,
         data: { primaryType, scores: result },
+        aiInsights,
         createdAt: new Date().toISOString(),
       };
 
@@ -98,7 +133,7 @@ const InterestSurvey: React.FC = () => {
         await window.electronAPI.saveAssessment(assessmentResult);
       }
 
-      navigate('/assessment/result', { state: { result: assessmentResult } });
+      navigate('/assessment/result', { state: { result: assessmentResult, aiInsights } });
     } catch (err) {
       setError('保存评估结果失败，请重试');
     }

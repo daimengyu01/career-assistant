@@ -121,4 +121,40 @@ export function registerAiHandlers() {
       content: response.content,
     };
   });
+
+  // 保存 providers 数组和 activeProviderId 到 store
+  ipcMain.handle(
+    'ai:saveProviders',
+    async (_event, providers: AiProviderRecord[], activeProviderId: string) => {
+      try {
+        const list = Array.isArray(providers) ? providers : [];
+        store.set({ aiProviders: list, activeProviderId });
+        return { success: true, count: list.length };
+      } catch (error) {
+        console.error('ai:saveProviders error:', error);
+        throw error;
+      }
+    }
+  );
+
+  // 返回当前活跃 provider（含 apiKey，供前端显示）
+  ipcMain.handle('ai:getActiveProvider', async () => {
+    try {
+      const provider = getActiveProvider();
+      return {
+        success: true,
+        provider: {
+          id: provider.id,
+          name: provider.name,
+          baseUrl: provider.baseUrl,
+          apiKey: provider.apiKey,
+          model: provider.model,
+          isDefault: provider.isDefault ?? false,
+        },
+      };
+    } catch (error) {
+      console.error('ai:getActiveProvider error:', error);
+      throw error;
+    }
+  });
 }

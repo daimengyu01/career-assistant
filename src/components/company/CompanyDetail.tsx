@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Text, Stack, Button, Group, Card, Badge, Grid, NumberInput, Textarea, Alert, Tabs, Rating, Divider } from '@mantine/core';
+import { Container, Title, Text, Stack, Button, Group, Card, Badge, Grid, NumberInput, Textarea, Alert, Tabs, Rating, Divider, Progress } from '@mantine/core';
 import { useNavigate, useParams } from 'react-router-dom';
-import { IconArrowLeft, IconEdit, IconTrash, IconMapPin, IconCurrencyYen } from '@tabler/icons-react';
+import { IconArrowLeft, IconEdit, IconTrash, IconMapPin, IconCurrencyYen, IconSparkles } from '@tabler/icons-react';
 import { useCompanyStore } from '../../stores/useCompanyStore';
 import Loading from '../common/Loading';
 import type { Company } from '../../types/company';
+
+const EVAL_DIMENSIONS = [
+  { key: 'stability', label: '稳定性', color: 'green' },
+  { key: 'promotion', label: '晋升清晰度', color: 'blue' },
+  { key: 'industry', label: '行业前景', color: 'cyan' },
+  { key: 'regional', label: '地域发展', color: 'grape' },
+] as const;
 
 const CompanyDetail: React.FC = () => {
   const navigate = useNavigate();
@@ -19,6 +26,15 @@ const CompanyDetail: React.FC = () => {
   const [localCompany, setLocalCompany] = useState<Partial<Company>>({});
 
   const company = companies.find((c) => c.id === id);
+
+  const [autoEval, setAutoEval] = useState<{
+    scores: Record<string, number>;
+    reasons: Record<string, string[]>;
+  } | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [evalError, setEvalError] = useState<string | null>(null);
+  const [manualStability, setManualStability] = useState<number>(company?.stabilityScore ?? 50);
+  const [manualPromotion, setManualPromotion] = useState<number>(company?.promotionClarity ?? 50);
 
   useEffect(() => {
     const loadCompany = async () => {
@@ -82,6 +98,60 @@ const CompanyDetail: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (company) {
+      setManualStability(company.stabilityScore);
+      setManualPromotion(company.promotionClarity);
+    }
+  }, [company]);
+
+  const handleAutoEvaluate = async () => {
+    if (!id) return;
+    setEvaluating(true);
+    setEvalError(null);
+    try {
+      const result = (await window.electronAPI?.autoEvaluateCompany?.(id)) as {
+        scores?: Record<string, number>;
+        reasons?: Record<string, string[]>;
+      } | undefined;
+      if (result && (result.scores || result.reasons)) {
+        setAutoEval({
+          scores: result.scores || {},
+          reasons: result.reasons || {},
+        });
+      } else {
+        setEvalError('未返回有效的评估结果');
+      }
+    } catch (err) {
+      setEvalError('自动评估失败：' + (err as Error).message);
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const handleApplyOverride = async () => {
+    if (!id || !company) return;
+    setSaving(true);
+    setEvalError(null);
+    try {
+      const updated: Company = {
+        ...company,
+        stabilityScore: manualStability,
+        promotionClarity: manualPromotion,
+      };
+      updateCompany(id, updated);
+      setLocalCompany(updated);
+      if (window.electronAPI?.saveCompany) {
+        await window.electronAPI.saveCompany(updated);
+      }
+      setAutoEval(null);
+    } catch (err) {
+      setEvalError('保存覆盖失败：' + (err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const getScaleLabel = (scale?: string) => {
     switch (scale) {
       case 'large': return '大型企业';
@@ -89,13 +159,6 @@ const CompanyDetail: React.FC = () => {
       case 'startup': return '初创公司';
       default: return scale || '未知';
     }
-  };
-
-  const getStabilityColor = (score?: number) => {
-    if (!score) return 'gray';
-    if (score >= 80) return 'green';
-    if (score >= 60) return 'yellow';
-    return 'red';
   };
 
   if (loading) {
@@ -244,35 +307,83 @@ const CompanyDetail: React.FC = () => {
         <Tabs.Panel value="evaluation">
           <Card withBorder shadow="sm" radius="md" padding="lg">
             <Stack gap="md">
-              <Title order={4}>综合评估</Title>
-              <Text c="dimmed" size="sm">
-                基于公司稳定性、晋升路径、行业前景等维度的综合评估
-              </Text>
+              <Group justify="space-between" align="flex-start">
+                <div>
+                  <Title order={4}>综合评估</Title>
+                  <Text c="dimmed" size="sm">
+                    基于公司稳定性、晋升路径、行业前景等维度的综合评估
+                  </Text>
+                </div>
+                <Button
+                  variant="light"
+                  leftSection={<IconSparkles size={16} />}
+                  loading={evaluating}
+                  onClick={handleAutoEvaluate}
+                >
+                  自动评估
+                </Button>
+              </Group>
 
-              <Grid>
-                <Grid.Col span={6}>
-                  <Card withBorder p="md" radius="md">
-                    <Text size="sm" c="dimmed" mb="xs">稳定性指数</Text>
-                    <Group justify="space-between">
-                      <Text fw={700} size="xl">{company.stabilityScore}</Text>
-                      <Badge color={getStabilityColor(company.stabilityScore)} size="lg">
-                        {company.stabilityScore >= 80 ? '高' : company.stabilityScore >= 60 ? '中' : '低'}
-                      </Badge>
-                    </Group>
-                  </Card>
-                </Grid.Col>
-                <Grid.Col span={6}>
-                  <Card withBorder p="md" radius="md">
-                    <Text size="sm" c="dimmed" mb="xs">晋升清晰度</Text>
-                    <Group justify="space-between">
-                      <Text fw={700} size="xl">{company.promotionClarity}</Text>
-                      <Badge color={company.promotionClarity >= 80 ? 'green' : company.promotionClarity >= 60 ? 'yellow' : 'red'} size="lg">
-                        {company.promotionClarity >= 80 ? '清晰' : company.promotionClarity >= 60 ? '一般' : '模糊'}
-                      </Badge>
-                    </Group>
-                  </Card>
-                </Grid.Col>
-              </Grid>
+              {evalError && (
+                <Alert color="red" title="评估失败">
+                  {evalError}
+                </Alert>
+              )}
+
+              {autoEval ? (
+                <Stack gap="sm">
+                  <Title order={5}>自动评分结果</Title>
+                  {EVAL_DIMENSIONS.map((dim) => {
+                    const score = Number(autoEval.scores[dim.key]) || 0;
+                    const reasons = autoEval.reasons[dim.key] || [];
+                    return (
+                      <div key={dim.key}>
+                        <Group justify="space-between" mb={4}>
+                          <Text size="sm" fw={500}>{dim.label}</Text>
+                          <Text size="sm" c="dimmed">{score} / 100</Text>
+                        </Group>
+                        <Progress value={score} color={dim.color} size="lg" radius="md" />
+                        {reasons.length > 0 && (
+                          <Stack gap={2} mt={6}>
+                            {reasons.map((r, i) => (
+                              <Text key={i} size="xs" c="dimmed">• {r}</Text>
+                            ))}
+                          </Stack>
+                        )}
+                      </div>
+                    );
+                  })}
+                </Stack>
+              ) : (
+                <Alert color="blue" variant="light" title="提示">
+                  点击“自动评估”，由 AI 根据企业信息生成各维度评分及评分依据。
+                </Alert>
+              )}
+
+              <Divider label="手工覆盖" labelPosition="center" />
+
+              <Stack gap="sm">
+                <NumberInput
+                  label="稳定性评分"
+                  min={0}
+                  max={100}
+                  value={manualStability}
+                  onChange={(val) => setManualStability(Number(val) || 0)}
+                />
+                <NumberInput
+                  label="晋升清晰度"
+                  min={0}
+                  max={100}
+                  value={manualPromotion}
+                  onChange={(val) => setManualPromotion(Number(val) || 0)}
+                />
+                <Group>
+                  <Button variant="light" loading={saving} onClick={handleApplyOverride}>
+                    应用覆盖
+                  </Button>
+                  <Text size="xs" c="dimmed">手工评分将覆盖自动评分并保存到该公司。</Text>
+                </Group>
+              </Stack>
 
               <Alert color="blue" title="建议">
                 <Text size="sm">

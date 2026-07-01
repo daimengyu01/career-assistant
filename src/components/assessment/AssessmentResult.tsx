@@ -1,7 +1,7 @@
 import React from 'react';
-import { Container, Title, Text, Stack, Button, Group, Card, Badge, SimpleGrid, Divider } from '@mantine/core';
+import { Container, Title, Text, Stack, Button, Group, Card, Badge, SimpleGrid, Divider, List } from '@mantine/core';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { IconArrowLeft, IconHome, IconBrain, IconHeart, IconChartBar } from '@tabler/icons-react';
+import { IconArrowLeft, IconHome, IconBrain, IconHeart, IconChartBar, IconBulb, IconBriefcase, IconAlertTriangle } from '@tabler/icons-react';
 import type { AssessmentResult } from '../../types/assessment';
 
 const typeConfig = {
@@ -40,6 +40,24 @@ const AssessmentResult: React.FC = () => {
 
   const config = typeConfig[result.type];
   const data = result.data as Record<string, unknown>;
+
+  // 从 router state 或结果对象中读取 AI insights
+  const aiInsightsRaw =
+    (location.state as { aiInsights?: string } | null)?.aiInsights || result.aiInsights;
+  let aiInsights: { strengths?: string[]; careers?: string[]; cautions?: string[] } | null = null;
+  let parseFailed = false;
+  if (aiInsightsRaw) {
+    try {
+      let jsonStr = aiInsightsRaw.trim();
+      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1].trim();
+      }
+      aiInsights = JSON.parse(jsonStr);
+    } catch {
+      parseFailed = true;
+    }
+  }
 
   return (
     <Container size="md" py="xl">
@@ -80,15 +98,63 @@ const AssessmentResult: React.FC = () => {
             </div>
           </Group>
 
-          {result.aiInsights && (
-            <>
-              <Divider label="AI 洞察" labelPosition="left" />
-              <Card bg="gray.0" p="md" radius="md">
-                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                  {result.aiInsights}
-                </Text>
-              </Card>
-            </>
+          <Divider label="AI 洞察" labelPosition="left" />
+          {aiInsights ? (
+            <Stack gap="md">
+              {aiInsights.strengths && aiInsights.strengths.length > 0 && (
+                <Card withBorder p="md" radius="md">
+                  <Group gap="xs" mb="xs">
+                    <IconBulb size={18} color="var(--mantine-color-green-filled)" />
+                    <Text fw={500}>职业优势</Text>
+                  </Group>
+                  <List size="sm" spacing="xs">
+                    {aiInsights.strengths.map((item, idx) => (
+                      <List.Item key={idx}>{item}</List.Item>
+                    ))}
+                  </List>
+                </Card>
+              )}
+
+              {aiInsights.careers && aiInsights.careers.length > 0 && (
+                <Card withBorder p="md" radius="md">
+                  <Group gap="xs" mb="xs">
+                    <IconBriefcase size={18} color="var(--mantine-color-blue-filled)" />
+                    <Text fw={500}>适合的职业方向</Text>
+                  </Group>
+                  <List size="sm" spacing="xs">
+                    {aiInsights.careers.map((item, idx) => (
+                      <List.Item key={idx}>{item}</List.Item>
+                    ))}
+                  </List>
+                </Card>
+              )}
+
+              {aiInsights.cautions && aiInsights.cautions.length > 0 && (
+                <Card withBorder p="md" radius="md">
+                  <Group gap="xs" mb="xs">
+                    <IconAlertTriangle size={18} color="var(--mantine-color-orange-filled)" />
+                    <Text fw={500}>需要注意的短板</Text>
+                  </Group>
+                  <List size="sm" spacing="xs">
+                    {aiInsights.cautions.map((item, idx) => (
+                      <List.Item key={idx}>{item}</List.Item>
+                    ))}
+                  </List>
+                </Card>
+              )}
+            </Stack>
+          ) : parseFailed && aiInsightsRaw ? (
+            <Card bg="gray.0" p="md" radius="md">
+              <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                {aiInsightsRaw}
+              </Text>
+            </Card>
+          ) : (
+            <Card bg="gray.0" p="md" radius="md">
+              <Text size="sm" c="dimmed" ta="center">
+                暂无 AI 分析
+              </Text>
+            </Card>
           )}
         </Stack>
       </Card>
