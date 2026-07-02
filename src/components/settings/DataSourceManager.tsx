@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Container, Title, Text, Stack, Button, Group, TextInput, Select, Card, Alert, Table, ActionIcon, Tooltip, Tabs, Badge, FileInput, Modal, Progress } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { IconArrowLeft, IconUpload, IconTrash, IconRefresh, IconDatabase, IconFile, IconCheck } from '@tabler/icons-react';
@@ -17,11 +17,16 @@ const DataSourceManager: React.FC = () => {
 
   const [form, setForm] = useState({
     name: '',
-    type: 'api' as DataSource['type'],
+    type: 'bing' as DataSource['type'],
   });
 
+  const mountedRef = useRef(true);
   useEffect(() => {
+    mountedRef.current = true;
     loadDataSources();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const loadDataSources = async () => {
@@ -58,9 +63,11 @@ const DataSourceManager: React.FC = () => {
       }
 
       setDataSources((prev) => [...prev, dataSource]);
-      setForm({ name: '', type: 'api' });
+      setForm({ name: '', type: 'bing' });
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      setTimeout(() => {
+        if (mountedRef.current) setSaved(false);
+      }, 3000);
     } catch (err) {
       setError('保存数据源失败');
     } finally {
@@ -114,11 +121,12 @@ const DataSourceManager: React.FC = () => {
           // 使用正确的 IPC：crawler:import（importData），将原始文本交由后端解析 JSON/CSV
           if (window.electronAPI?.importData) {
             const result = await window.electronAPI.importData(format, content);
-            
-            if (result.success) {
+
+            if (result?.success) {
               setImportProgress(100);
               setSaved(true);
               setTimeout(() => {
+                if (!mountedRef.current) return;
                 setImportModalOpen(false);
                 setImportProgress(0);
                 loadDataSources();
@@ -136,6 +144,8 @@ const DataSourceManager: React.FC = () => {
         }
       };
 
+      reader.onerror = () => { setError('读取文件失败'); setImporting(false); };
+
       reader.readAsText(file);
     } catch (err) {
       setError('读取文件失败');
@@ -145,18 +155,18 @@ const DataSourceManager: React.FC = () => {
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'api': return 'API';
-      case 'script': return '脚本';
-      case 'file': return '文件';
+      case 'bing': return 'Bing 搜索';
+      case 'serpapi': return 'SerpApi';
+      case 'custom': return '自定义';
       default: return type;
     }
   };
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'api': return 'blue';
-      case 'script': return 'green';
-      case 'file': return 'orange';
+      case 'bing': return 'blue';
+      case 'serpapi': return 'green';
+      case 'custom': return 'orange';
       default: return 'gray';
     }
   };
@@ -176,7 +186,7 @@ const DataSourceManager: React.FC = () => {
             管理和配置数据采集来源，支持 API、脚本和文件导入
           </Text>
         </div>
-        <Button variant="default" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/settings')}>
+        <Button variant="default" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/settings/api')}>
           返回设置
         </Button>
       </Group>
@@ -208,9 +218,6 @@ const DataSourceManager: React.FC = () => {
                 <Text c="dimmed">暂无数据源</Text>
                 <Group>
                   <Button onClick={() => setImportModalOpen(true)}>导入数据</Button>
-                  <Button variant="light" onClick={() => navigate('/settings/crawler')}>
-                    添加爬虫
-                  </Button>
                 </Group>
               </Stack>
             ) : (
@@ -307,9 +314,9 @@ const DataSourceManager: React.FC = () => {
                   label="类型"
                   placeholder="请选择类型"
                   data={[
-                    { value: 'api', label: 'API' },
-                    { value: 'script', label: '脚本' },
-                    { value: 'file', label: '文件' },
+                    { value: 'bing', label: 'Bing 搜索' },
+                    { value: 'serpapi', label: 'SerpApi' },
+                    { value: 'custom', label: '自定义' },
                   ]}
                   value={form.type}
                   onChange={(val) => val && setForm({ ...form, type: val as DataSource['type'] })}

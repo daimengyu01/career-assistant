@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Container, Title, Text, Stack, Button, Group, Card, Badge, Grid, NumberInput, Textarea, Alert, Tabs, Rating, Divider, Progress } from '@mantine/core';
 import { useNavigate, useParams } from 'react-router-dom';
 import { IconArrowLeft, IconEdit, IconTrash, IconMapPin, IconCurrencyYen, IconSparkles } from '@tabler/icons-react';
@@ -35,8 +35,16 @@ const CompanyDetail: React.FC = () => {
   const [evalError, setEvalError] = useState<string | null>(null);
   const [manualStability, setManualStability] = useState<number>(company?.stabilityScore ?? 50);
   const [manualPromotion, setManualPromotion] = useState<number>(company?.promotionClarity ?? 50);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
+    let mounted = true;
     const loadCompany = async () => {
       setLoading(true);
       setError(null);
@@ -44,6 +52,7 @@ const CompanyDetail: React.FC = () => {
       try {
         if (!company && window.electronAPI?.getCompany) {
           const data = await window.electronAPI.getCompany(id!);
+          if (!mounted) return;
           const found = data as Company;
           if (found) {
             setLocalCompany(found);
@@ -56,13 +65,16 @@ const CompanyDetail: React.FC = () => {
           setError('公司不存在');
         }
       } catch (err) {
-        setError('加载公司详情失败');
+        if (mounted) setError('加载公司详情失败');
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     loadCompany();
+    return () => {
+      mounted = false;
+    };
   }, [id, company]);
 
   const handleSave = async () => {
@@ -70,12 +82,7 @@ const CompanyDetail: React.FC = () => {
 
     setSaving(true);
     try {
-      updateCompany(id, localCompany as Company);
-
-      if (window.electronAPI?.saveCompany) {
-        await window.electronAPI.saveCompany(localCompany);
-      }
-
+      await updateCompany(id, localCompany as Company);
       setIsEditing(false);
     } catch (err) {
       setError('保存失败');
@@ -88,10 +95,7 @@ const CompanyDetail: React.FC = () => {
     if (!id || !confirm('确定要删除这家公司吗？')) return;
 
     try {
-      if (window.electronAPI?.deleteCompany) {
-        await window.electronAPI.deleteCompany(id);
-      }
-      removeCompany(id);
+      await removeCompany(id);
       navigate('/companies');
     } catch (err) {
       setError('删除失败');
@@ -114,6 +118,7 @@ const CompanyDetail: React.FC = () => {
         scores?: Record<string, number>;
         reasons?: Record<string, string[]>;
       } | undefined;
+      if (!isMountedRef.current) return;
       if (result && (result.scores || result.reasons)) {
         setAutoEval({
           scores: result.scores || {},
@@ -123,9 +128,9 @@ const CompanyDetail: React.FC = () => {
         setEvalError('未返回有效的评估结果');
       }
     } catch (err) {
-      setEvalError('自动评估失败：' + (err as Error).message);
+      if (isMountedRef.current) setEvalError('自动评估失败：' + (err as Error).message);
     } finally {
-      setEvaluating(false);
+      if (isMountedRef.current) setEvaluating(false);
     }
   };
 
@@ -139,11 +144,8 @@ const CompanyDetail: React.FC = () => {
         stabilityScore: manualStability,
         promotionClarity: manualPromotion,
       };
-      updateCompany(id, updated);
+      await updateCompany(id, updated);
       setLocalCompany(updated);
-      if (window.electronAPI?.saveCompany) {
-        await window.electronAPI.saveCompany(updated);
-      }
       setAutoEval(null);
     } catch (err) {
       setEvalError('保存覆盖失败：' + (err as Error).message);
@@ -165,7 +167,9 @@ const CompanyDetail: React.FC = () => {
     return <Loading message="加载公司详情..." />;
   }
 
-  if (error || !company) {
+  const displayCompany = (company || localCompany) as Company;
+
+  if (error || !displayCompany) {
     return (
       <Container size="md" py="xl">
         <Stack align="center" gap="md">
@@ -216,11 +220,11 @@ const CompanyDetail: React.FC = () => {
             <Stack gap="md">
               <Group justify="space-between">
                 <div>
-                  <Title order={3}>{company.name}</Title>
-                  <Text c="dimmed">{company.industry}</Text>
+                  <Title order={3}>{displayCompany.name}</Title>
+                  <Text c="dimmed">{displayCompany.industry}</Text>
                 </div>
                 <Badge size="lg" color="blue" variant="light">
-                  {getScaleLabel(company.scale)}
+                  {getScaleLabel(displayCompany.scale)}
                 </Badge>
               </Group>
 
@@ -249,20 +253,20 @@ const CompanyDetail: React.FC = () => {
                 </Stack>
               ) : (
                 <Stack gap="sm">
-                  {company.description && (
+                  {displayCompany.description && (
                     <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                      {company.description}
+                      {displayCompany.description}
                     </Text>
                   )}
                   <Group gap="lg">
                     <Group gap="xs">
                       <IconMapPin size={16} />
-                      <Text size="sm">{company.location.city}{company.location.district ? ` · ${company.location.district}` : ''}</Text>
+                      <Text size="sm">{displayCompany.location.city}{displayCompany.location.district ? ` · ${displayCompany.location.district}` : ''}</Text>
                     </Group>
-                    {company.fundingStage && (
+                    {displayCompany.fundingStage && (
                       <Group gap="xs">
                         <IconCurrencyYen size={16} />
-                        <Text size="sm">{company.fundingStage}</Text>
+                        <Text size="sm">{displayCompany.fundingStage}</Text>
                       </Group>
                     )}
                   </Group>
@@ -275,24 +279,24 @@ const CompanyDetail: React.FC = () => {
                 <Grid.Col span={6}>
                   <Text size="sm" c="dimmed">稳定性评分</Text>
                   <Group gap="xs">
-                    <Rating value={Math.round(company.stabilityScore / 20)} readOnly fractions={2} />
-                    <Text fw={500}>{company.stabilityScore} 分</Text>
+                    <Rating value={Math.round(displayCompany.stabilityScore / 20)} readOnly fractions={2} />
+                    <Text fw={500}>{displayCompany.stabilityScore} 分</Text>
                   </Group>
                 </Grid.Col>
                 <Grid.Col span={6}>
                   <Text size="sm" c="dimmed">晋升清晰度</Text>
                   <Group gap="xs">
-                    <Rating value={Math.round(company.promotionClarity / 20)} readOnly fractions={2} />
-                    <Text fw={500}>{company.promotionClarity} 分</Text>
+                    <Rating value={Math.round(displayCompany.promotionClarity / 20)} readOnly fractions={2} />
+                    <Text fw={500}>{displayCompany.promotionClarity} 分</Text>
                   </Group>
                 </Grid.Col>
               </Grid>
 
-              {company.tags.length > 0 && (
+              {displayCompany.tags.length > 0 && (
                 <>
                   <Divider />
                   <Group gap="xs">
-                    {company.tags.map((tag) => (
+                    {displayCompany.tags.map((tag) => (
                       <Badge key={tag} variant="light" color="gray">
                         {tag}
                       </Badge>
@@ -387,8 +391,8 @@ const CompanyDetail: React.FC = () => {
 
               <Alert color="blue" title="建议">
                 <Text size="sm">
-                  该公司适合追求{company.stabilityScore >= 80 ? '稳定' : '成长'}发展的求职者。
-                  {company.promotionClarity >= 80 ? '晋升路径清晰，长期发展潜力良好。' : '晋升机制可能需要进一步了解。'}
+                  该公司适合追求{displayCompany.stabilityScore >= 80 ? '稳定' : '成长'}发展的求职者。
+                  {displayCompany.promotionClarity >= 80 ? '晋升路径清晰，长期发展潜力良好。' : '晋升机制可能需要进一步了解。'}
                 </Text>
               </Alert>
             </Stack>

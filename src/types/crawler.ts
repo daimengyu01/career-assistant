@@ -1,8 +1,12 @@
 export interface DataSource {
   id: string;
   name: string;
-  type: 'api' | 'script' | 'file';
-  config: Record<string, unknown>;
+  type: 'bing' | 'serpapi' | 'custom';
+  config: {
+    apiKey?: string;
+    endpoint?: string;
+    params?: Record<string, string>;
+  };
   createdAt: string;
 }
 

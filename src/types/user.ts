@@ -6,7 +6,7 @@ export interface UserProfile {
   education?: string;
   graduationYear?: number;
   personality: {
-    mbti: string;
+    mbti: string | null;
     extroversion: number;
     openness: number;
     conscientiousness: number;
@@ -14,9 +14,15 @@ export interface UserProfile {
     neuroticism: number;
   };
   interests: string[];
-  careerGoals?: string;
+  careerGoals?: Record<string, unknown> | string;
   riskPreference: 'conservative' | 'balanced' | 'aggressive';
   selfIntro?: string;
+  identity?: string | null;
+  gender?: string | null;
+  skills?: string[];
+  values?: string[];
+  resumeText?: string;
+  resumePath?: string;
   resume?: {
     fileName?: string;
     filePath?: string;

@@ -4,7 +4,7 @@ import type { UserProfile } from '../types/user';
 interface UserState {
   profile: UserProfile | null;
   setProfile: (profile: UserProfile) => void;
-  updateProfile: (updates: Partial<UserProfile>) => void;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   clearProfile: () => void;
   loadFromBackend: () => Promise<void>;
 }
@@ -12,12 +12,9 @@ interface UserState {
 export const useUserStore = create<UserState>((set, get) => ({
   profile: null,
   setProfile: (profile) => set({ profile }),
-  updateProfile: (updates) => {
+  updateProfile: async (updates) => {
     const current = get().profile;
-    if (!current) {
-      set({ profile: null });
-      return;
-    }
+    if (!current) return;
     const updated: UserProfile = {
       ...current,
       ...updates,
@@ -25,9 +22,11 @@ export const useUserStore = create<UserState>((set, get) => ({
     };
     set({ profile: updated });
     if (window.electronAPI?.saveProfile) {
-      window.electronAPI.saveProfile(updated).catch((e) => {
+      try {
+        await window.electronAPI.saveProfile(updated);
+      } catch (e) {
         console.error('Failed to persist profile to backend:', e);
-      });
+      }
     }
   },
   clearProfile: () => set({ profile: null }),

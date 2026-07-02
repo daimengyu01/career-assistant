@@ -5,13 +5,16 @@ import { IconArrowLeft, IconDownload, IconUpload, IconCheck, IconX, IconDatabase
 
 const DataBackup: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exportingSettings, setExportingSettings] = useState(false);
+  const [importingSettings, setImportingSettings] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
 
   const handleExport = async () => {
-    setLoading(true);
+    setExporting(true);
     setError(null);
     setSuccess(null);
 
@@ -29,7 +32,7 @@ const DataBackup: React.FC = () => {
     } catch (err) {
       setError('导出失败: ' + (err as Error).message);
     } finally {
-      setLoading(false);
+      setExporting(false);
     }
   };
 
@@ -39,7 +42,7 @@ const DataBackup: React.FC = () => {
       return;
     }
 
-    setLoading(true);
+    setImporting(true);
     setError(null);
     setSuccess(null);
 
@@ -61,12 +64,12 @@ const DataBackup: React.FC = () => {
     } catch (err) {
       setError('导入失败: 文件格式错误或数据损坏');
     } finally {
-      setLoading(false);
+      setImporting(false);
     }
   };
 
   const handleSettingsExport = async () => {
-    setLoading(true);
+    setExportingSettings(true);
     setError(null);
     setSuccess(null);
 
@@ -84,12 +87,12 @@ const DataBackup: React.FC = () => {
     } catch (err) {
       setError('设置导出失败: ' + (err as Error).message);
     } finally {
-      setLoading(false);
+      setExportingSettings(false);
     }
   };
 
   const handleSettingsImport = async () => {
-    setLoading(true);
+    setImportingSettings(true);
     setError(null);
     setSuccess(null);
 
@@ -107,7 +110,7 @@ const DataBackup: React.FC = () => {
     } catch (err) {
       setError('设置导入失败: ' + (err as Error).message);
     } finally {
-      setLoading(false);
+      setImportingSettings(false);
     }
   };
 
@@ -122,7 +125,7 @@ const DataBackup: React.FC = () => {
             导出和导入您的数据和设置，防止数据丢失
           </Text>
         </div>
-        <Button variant="default" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/settings')}>
+        <Button variant="default" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/settings/api')}>
           返回设置
         </Button>
       </Group>
@@ -160,7 +163,8 @@ const DataBackup: React.FC = () => {
             <Button
               leftSection={<IconDownload size={16} />}
               onClick={handleExport}
-              loading={loading}
+              loading={exporting}
+              disabled={exporting}
             >
               导出数据
             </Button>
@@ -197,8 +201,8 @@ const DataBackup: React.FC = () => {
               <Button
                 leftSection={<IconUpload size={16} />}
                 onClick={handleImport}
-                loading={loading}
-                disabled={!importFile}
+                loading={importing}
+                disabled={!importFile || importing}
               >
                 导入数据
               </Button>
@@ -225,7 +229,8 @@ const DataBackup: React.FC = () => {
               variant="outline"
               leftSection={<IconDownload size={16} />}
               onClick={handleSettingsExport}
-              loading={loading}
+              loading={exportingSettings}
+              disabled={exportingSettings}
             >
               导出设置
             </Button>
@@ -233,7 +238,8 @@ const DataBackup: React.FC = () => {
               variant="outline"
               leftSection={<IconUpload size={16} />}
               onClick={handleSettingsImport}
-              loading={loading}
+              loading={importingSettings}
+              disabled={importingSettings}
             >
               导入设置
             </Button>

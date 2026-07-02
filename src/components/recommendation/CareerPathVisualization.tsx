@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Container, Title, Text, Stack, Card, SimpleGrid, Badge, Group, Timeline, Alert } from '@mantine/core';
 import { IconBriefcase, IconTrendingUp, IconStar, IconTarget } from '@tabler/icons-react';
 import { useUserStore } from '../../stores/useUserStore';
@@ -10,7 +10,7 @@ const CareerPathVisualization: React.FC = () => {
   const assessmentResults = useAssessmentStore((state) => state.results);
   const companies = useCompanyStore((state) => state.companies);
 
-  const mbtiResult = assessmentResults.find((r) => r.type === 'personality');
+  const mbtiResult = assessmentResults.find((r) => r.type === 'mbti');
   const interestResult = assessmentResults.find((r) => r.type === 'interest');
 
   const getCareerSuggestions = () => {
@@ -101,7 +101,7 @@ const CareerPathVisualization: React.FC = () => {
     return suggestions;
   };
 
-  const suggestions = getCareerSuggestions();
+  const suggestions = useMemo(() => getCareerSuggestions(), [mbtiResult, interestResult, companies]);
 
   const getEducationStage = () => {
     if (!profile?.graduationYear) return 'unknown';
@@ -126,6 +126,7 @@ const CareerPathVisualization: React.FC = () => {
   const currentStage = stageConfig[stage];
 
   const targetCompanies = companies
+    .slice()
     .sort((a, b) => b.stabilityScore - a.stabilityScore)
     .slice(0, 3);
 
@@ -171,7 +172,7 @@ const CareerPathVisualization: React.FC = () => {
               {suggestions.map((item, index) => (
                 <Card key={index} withBorder p="md" radius="md">
                   <Group gap="md">
-                    <div style={{ color: `var(--mantine-color-${item.color}-filled)` }}>
+                    <div style={{ color: `var(--mantine-color-${item.color}-6)` }}>
                       {item.icon}
                     </div>
                     <div style={{ flex: 1 }}>

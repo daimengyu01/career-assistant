@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Container, Title, Text, Stack, Button, Group, Progress, Radio, Card, Alert } from '@mantine/core';
+import { Container, Title, Text, Stack, Button, Group, Progress, UnstyledButton, Box, Card, Alert } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { IconArrowLeft, IconArrowRight } from '@tabler/icons-react';
 import { useAssessmentStore } from '../../stores/useAssessmentStore';
@@ -61,6 +61,7 @@ const BigFiveQuestionnaire: React.FC = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const progress = useMemo(() => {
     return Math.round(((currentQuestion + 1) / questions.length) * 100);
@@ -102,6 +103,7 @@ const BigFiveQuestionnaire: React.FC = () => {
     }
 
     setError(null);
+    setSubmitting(true);
 
     try {
       const result = calculateResult();
@@ -132,7 +134,7 @@ const BigFiveQuestionnaire: React.FC = () => {
       const assessmentResult = {
         id: Date.now().toString(),
         userId: profile?.id || 'guest',
-        type: 'personality' as const,
+        type: 'bigfive' as const,
         data: result,
         aiInsights,
         createdAt: new Date().toISOString(),
@@ -156,11 +158,14 @@ const BigFiveQuestionnaire: React.FC = () => {
       navigate('/assessment/result', { state: { result: assessmentResult, aiInsights } });
     } catch (err) {
       setError('保存评估结果失败，请重试');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleNext = () => {
-    if (answers[currentQuestion] === undefined) {
+    const currentQ = questions[currentQuestion];
+    if (!currentQ || answers[currentQ.id] === undefined) {
       setError('请选择一个答案');
       return;
     }
@@ -204,34 +209,54 @@ const BigFiveQuestionnaire: React.FC = () => {
             {question.text}
           </Text>
 
-          <Radio.Group
-            value={answers[question.id]?.toString()}
-            onChange={(val) => {
-              setAnswers((prev) => ({ ...prev, [question.id]: Number(val) }));
-              setError(null);
-            }}
-          >
-            <Stack gap="sm">
-              {[1, 2, 3, 4, 5].map((val) => (
-                <Radio.Card
+          <Stack gap="sm" role="radiogroup" aria-label={question.text}>
+            {[1, 2, 3, 4, 5].map((val) => {
+              const isSelected = answers[question.id] === val;
+              const labels = ['', '完全不同意', '不太同意', '中立', '比较同意', '完全同意'];
+              return (
+                <UnstyledButton
                   key={val}
-                  value={val.toString()}
-                  p="md"
-                  style={{ cursor: 'pointer' }}
+                  role="radio"
+                  aria-checked={isSelected}
+                  tabIndex={isSelected ? 0 : -1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setAnswers((prev) => ({ ...prev, [question.id]: val }));
+                      setError(null);
+                    }
+                  }}
+                  onClick={() => {
+                    setAnswers((prev) => ({ ...prev, [question.id]: val }));
+                    setError(null);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: isSelected ? '2px solid var(--mantine-color-blue-6)' : '1px solid var(--mantine-color-gray-3)',
+                    backgroundColor: isSelected ? 'var(--mantine-color-blue-0)' : 'transparent',
+                    cursor: 'pointer',
+                    width: '100%',
+                    textAlign: 'left',
+                  }}
                 >
-                  <Group justify="space-between">
-                    <Text size="sm">
-                      {val === 1 && '完全不同意'}
-                      {val === 2 && '不太同意'}
-                      {val === 3 && '中立'}
-                      {val === 4 && '比较同意'}
-                      {val === 5 && '完全同意'}
-                    </Text>
-                  </Group>
-                </Radio.Card>
-              ))}
-            </Stack>
-          </Radio.Group>
+                  <Box
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      border: isSelected ? '6px solid var(--mantine-color-blue-6)' : '2px solid var(--mantine-color-gray-4)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <Text size="sm">{labels[val]}</Text>
+                </UnstyledButton>
+              );
+            })}
+          </Stack>
 
           {error && (
             <Alert color="red" title="提示">
@@ -255,7 +280,7 @@ const BigFiveQuestionnaire: React.FC = () => {
             退出测试
           </Button>
           {currentQuestion === questions.length - 1 ? (
-            <Button onClick={handleSubmit} color="green">
+            <Button onClick={handleSubmit} color="green" loading={submitting} disabled={submitting}>
               查看结果
             </Button>
           ) : (

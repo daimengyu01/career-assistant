@@ -2,6 +2,7 @@
 node_modules/
 dist/
 dist-electron/
+dist_electron/
 
 # Build outputs
 out/
@@ -42,3 +43,9 @@ yarn-error.log*
 # Temporary files
 tmp/
 temp/
+
+# Build info
+*.tsbuildinfo
+
+# Personal user files
+resume.pdf

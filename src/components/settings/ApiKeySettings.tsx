@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Title,
@@ -16,7 +16,8 @@ import {
   LoadingOverlay,
 } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { IconArrowLeft, IconRobot, IconCheck, IconPlus, IconTrash, IconBolt } from '@tabler/icons-react';
+import { IconArrowLeft, IconRobot, IconCheck, IconPlus, IconTrash, IconBolt, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
+import { reopenDisclaimer } from '../common/DisclaimerDialog';
 
 interface AiProvider {
   id: string;
@@ -24,6 +25,7 @@ interface AiProvider {
   baseUrl: string;
   apiKey: string;
   model: string;
+  supportsVision?: boolean; // 是否支持视觉（用于截图 OCR）
 }
 
 interface ProviderTemplate {
@@ -49,12 +51,27 @@ const ApiKeySettings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [providers, setProviders] = useState<AiProvider[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [visionProviderId, setVisionProviderId] = useState<string>('');
 
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
   }, []);
 
   const loadSettings = async () => {
@@ -64,7 +81,11 @@ const ApiKeySettings: React.FC = () => {
       const settings = (await window.electronAPI?.getSettings?.()) as {
         aiProviders?: AiProvider[];
         activeProviderId?: string;
+        visionProviderId?: string;
       } | undefined;
+
+      // 读取视觉模型 ID（可能为空）
+      setVisionProviderId(settings?.visionProviderId || '');
 
       if (settings?.aiProviders && settings.aiProviders.length > 0) {
         setProviders(settings.aiProviders);
@@ -99,13 +120,15 @@ const ApiKeySettings: React.FC = () => {
   };
 
   const removeProvider = (id: string) => {
-    setProviders((prev) => {
-      const next = prev.filter((p) => p.id !== id);
-      if (activeProviderId === id) {
-        setActiveProviderId(next[0]?.id || '');
-      }
-      return next;
-    });
+    setProviders((prev) => prev.filter((p) => p.id !== id));
+    // 在 updater 外处理 activeProviderId，避免在 setState 回调中调用另一个 setState
+    if (activeProviderId === id) {
+      const remaining = providers.filter((p) => p.id !== id);
+      setActiveProviderId(remaining[0]?.id || '');
+    }
+    if (visionProviderId === id) {
+      setVisionProviderId('');
+    }
   };
 
   const handleTest = async (provider: AiProvider) => {
@@ -113,15 +136,17 @@ const ApiKeySettings: React.FC = () => {
     setError(null);
     try {
       const res = await window.electronAPI?.verifyAIProvider?.(provider);
+      if (!isMountedRef.current) return;
       if (res?.success) {
         setTestResults((prev) => ({ ...prev, [provider.id]: { ok: true, msg: `连接成功：${res.content}` } }));
       } else {
         setTestResults((prev) => ({ ...prev, [provider.id]: { ok: false, msg: '连接失败，请检查配置' } }));
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       setTestResults((prev) => ({ ...prev, [provider.id]: { ok: false, msg: '连接失败：' + (err as Error).message } }));
     } finally {
-      setTestingId(null);
+      if (isMountedRef.current) setTestingId(null);
     }
   };
 
@@ -130,7 +155,8 @@ const ApiKeySettings: React.FC = () => {
     setError(null);
     setSaved(false);
     try {
-      const payload = { aiProviders: providers, activeProviderId };
+      // saveSettings 会把 visionProviderId 一并存入 store；saveAIProviders 只存 providers 和 activeProviderId
+      const payload = { aiProviders: providers, activeProviderId, visionProviderId };
       if (window.electronAPI?.saveSettings) {
         await window.electronAPI.saveSettings(payload);
       }
@@ -138,7 +164,8 @@ const ApiKeySettings: React.FC = () => {
         await window.electronAPI.saveAIProviders(providers, activeProviderId);
       }
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError('保存设置失败：' + (err as Error).message);
     } finally {
@@ -172,6 +199,29 @@ const ApiKeySettings: React.FC = () => {
         </Alert>
       )}
 
+      {/* 风控与安全提示横幅 */}
+      <Alert color="orange" variant="light" mb="lg" icon={<IconAlertTriangle size={18} />} title="安全提示">
+        <Stack gap="xs">
+          <Text size="sm">
+            · API Key 以加密形式存储在本地，不会上传服务器。请妥善保管，切勿泄露。
+          </Text>
+          <Text size="sm">
+            · 调用第三方 API 产生的费用由用户自行承担。
+          </Text>
+          <Text size="sm">
+            · 职位抓取功能可能触发招聘网站风控，请勿频繁抓取，后果自负。
+          </Text>
+          <Button
+            variant="subtle"
+            size="xs"
+            leftSection={<IconInfoCircle size={14} />}
+            onClick={() => reopenDisclaimer()}
+          >
+            重新查看完整免责公告
+          </Button>
+        </Stack>
+      </Alert>
+
       {/* 活跃提供商 + 快速添加 */}
       <Card withBorder shadow="sm" radius="md" padding="lg" mb="lg">
         <Group gap="md" mb="md">
@@ -191,6 +241,17 @@ const ApiKeySettings: React.FC = () => {
             data={providers.map((p) => ({ value: p.id, label: `${p.name} · ${p.model}` }))}
             value={activeProviderId || undefined}
             onChange={(val) => val && setActiveProviderId(val)}
+          />
+
+          <Select
+            label="视觉模型（用于截图 OCR）"
+            placeholder="请选择支持视觉的模型"
+            data={providers
+              .filter((p) => p.supportsVision)
+              .map((p) => ({ value: p.id, label: `${p.name} · ${p.model}` }))}
+            value={visionProviderId || undefined}
+            onChange={(val) => val && setVisionProviderId(val)}
+            clearable
           />
 
           <Divider label="快速添加预置模板" labelPosition="center" />
@@ -272,6 +333,12 @@ const ApiKeySettings: React.FC = () => {
                   placeholder="例如：deepseek-chat"
                   value={p.model}
                   onChange={(e) => updateProvider(p.id, { model: e.currentTarget.value })}
+                />
+
+                <Switch
+                  label="支持视觉（用于截图 OCR）"
+                  checked={!!p.supportsVision}
+                  onChange={(e) => updateProvider(p.id, { supportsVision: e.currentTarget.checked })}
                 />
 
                 <Group justify="flex-end">

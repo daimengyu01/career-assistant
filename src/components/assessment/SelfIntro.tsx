@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Container, Title, Text, Textarea, Button, Group, Stack, Card, Alert, Select, NumberInput } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { IconArrowLeft, IconArrowRight, IconUser } from '@tabler/icons-react';
@@ -13,20 +13,44 @@ const templates = [
 
 const SelfIntro: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, updateProfile } = useUserStore();
+  const profile = useUserStore((s) => s.profile);
+  const updateProfile = useUserStore((s) => s.updateProfile);
   const [identity, setIdentity] = useState<string | null>(null);
   const [intro, setIntro] = useState('');
   const [error, setError] = useState('');
 
-  const handleSave = () => {
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      await useUserStore.getState().loadFromBackend();
+      if (!mounted) return;
+      const p = useUserStore.getState().profile;
+      if (p) {
+        setIntro((p.selfIntro as string) || '');
+        // Try to restore identity from profile data
+        if (p.identity) setIdentity(p.identity as string);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSave = async () => {
     if (!intro.trim()) {
       setError('请先填写你的自我介绍');
       return;
     }
-    updateProfile({
-      selfIntro: intro.trim(),
-      assessmentUnlocked: true,
-    });
+    try {
+      await updateProfile({
+        selfIntro: intro.trim(),
+        identity: identity,
+        assessmentUnlocked: true,
+      });
+    } catch (e) {
+      console.error('Failed to persist profile to backend:', e);
+    }
     navigate('/jobs');
   };
 
@@ -74,7 +98,7 @@ const SelfIntro: React.FC = () => {
         </Card>
 
         <Group justify="flex-end">
-        <Button variant="default" onClick={() => navigate('/assessment/resume')}>
+        <Button variant="default" onClick={() => navigate('/resume')}>
           跳过，稍后补充
         </Button>
         <Button onClick={() => { handleSave(); }} rightSection={<IconArrowRight size={16} />}>

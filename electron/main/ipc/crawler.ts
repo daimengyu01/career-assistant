@@ -1,7 +1,55 @@
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import Store from 'electron-store';
 import { getEncryptionKey } from '../config';
-import { getDb, persist } from '../db/index';
+import { persist, queryAll, executeRun } from '../db/index';
+import { callChatCompletions, getVisionProvider } from './ai';
+
+// 招聘网站域名白名单
+const ALLOWED_DOMAINS = ['zhipin.com', 'liepin.com', '51job.com', 'lagou.com', 'bosszhipin.com'];
+
+function isAllowedJobUrl(urlStr: string): boolean {
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    return ALLOWED_DOMAINS.some(d => u.hostname === d || u.hostname.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+
+// 带超时的 fetch（15s）
+async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// 插入单条职位记录（在事务内调用）
+function insertJobListing(record: Record<string, unknown>, fallbackSource: string): string {
+  const id = (record.id as string) || `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const title = (record.title as string) || (record.name as string) || '未命名职位';
+  const company = (record.company as string) || (record.company_name as string) || '未知公司';
+  const location = (record.location as string) || (record.location_city as string) || '';
+  const salary = (record.salary as string) || '';
+  const url = (record.url as string) || (record.link as string) || (record.source_url as string) || '';
+  const description = (record.description as string) || (record.snippet as string) || '';
+  const source = (record.source as string) || fallbackSource;
+  executeRun(
+    `INSERT OR REPLACE INTO job_listings (id, title, company, location_city, salary, source, source_url, description, collected_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, title, company, location, salary, source, url, description, new Date().toISOString()]
+  );
+  return id;
+}
+
+// 搜索结果类型定义
+interface BingResult { name: string; url: string; snippet: string; }
+interface SerpApiResult { title: string; company_name: string; location: string; link: string; description: string; }
+interface CustomResult { title?: string; name?: string; url?: string; link?: string; snippet?: string; description?: string; }
 
 interface SearchSource {
   id: string;
@@ -23,6 +71,9 @@ const store = new Store<Settings>({
   encryptionKey: getEncryptionKey(),
 });
 
+// 内嵌浏览器窗口引用（用户登录招聘网站 + 抓取页面文本用）
+let browserWin: BrowserWindow | null = null;
+
 function getEnabledSearchSource(): SearchSource | undefined {
   const sources = store.store.searchSources || [];
   return sources.find(s => s.config?.apiKey);
@@ -41,8 +92,7 @@ export function registerCrawlerHandlers() {
     } else {
       sources.push(source);
     }
-    store.store.searchSources = sources;
-    store.save();
+    store.set('searchSources', sources);
     return source;
   });
 
@@ -68,7 +118,6 @@ export function registerCrawlerHandlers() {
   // 导入 JSON/CSV 职位数据
   ipcMain.handle('crawler:import', async (_event, format: string, data: unknown) => {
     try {
-      const db = getDb();
       let records: Array<Record<string, unknown>> = [];
 
       if (format === 'json') {
@@ -88,28 +137,14 @@ export function registerCrawlerHandlers() {
         throw new Error(`不支持的导入格式: ${format}`);
       }
 
-      const stmt = db.prepare(`
-        INSERT OR REPLACE INTO job_listings
-          (id, title, company, location_city, salary, source, source_url, description, collected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      let count = 0;
-      const now = new Date().toISOString();
-      for (const record of records) {
-        stmt.run(
-          record.id || `import-${Date.now()}-${count}`,
-          record.title || record.name || '未知职位',
-          record.company || '未知公司',
-          record.location || record.location_city || null,
-          record.salary || null,
-          record.source || 'import',
-          record.url || record.source_url || null,
-          record.description || record.snippet || null,
-          record.collectedAt || record.collected_at || now
-        );
-        count++;
-      }
+      const count = runInTransaction(() => {
+        let n = 0;
+        for (const record of records) {
+          insertJobListing(record, 'import');
+          n++;
+        }
+        return n;
+      });
       persist();
       return { success: true, count };
     } catch (error) {
@@ -121,31 +156,17 @@ export function registerCrawlerHandlers() {
   // 批量保存搜索结果到 job_listings 表
   ipcMain.handle('crawler:saveJobs', async (_event, jobs: unknown[]) => {
     try {
-      const db = getDb();
       const list = Array.isArray(jobs) ? jobs : [];
-      const stmt = db.prepare(`
-        INSERT OR REPLACE INTO job_listings
-          (id, title, company, location_city, salary, source, source_url, description, collected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
 
-      let count = 0;
-      const now = new Date().toISOString();
-      for (const job of list) {
-        const record = (job || {}) as Record<string, unknown>;
-        stmt.run(
-          record.id || `job-${Date.now()}-${count}`,
-          record.title || '未知职位',
-          record.company || '未知公司',
-          record.location || record.location_city || null,
-          record.salary || null,
-          record.source || 'search',
-          record.url || record.source_url || null,
-          record.description || record.snippet || null,
-          record.collectedAt || record.collected_at || now
-        );
-        count++;
-      }
+      const count = runInTransaction(() => {
+        let n = 0;
+        for (const job of list) {
+          const record = (job || {}) as Record<string, unknown>;
+          insertJobListing(record, 'search');
+          n++;
+        }
+        return n;
+      });
       persist();
       return { success: true, count };
     } catch (error) {
@@ -167,92 +188,111 @@ export function registerCrawlerHandlers() {
     }
   });
 
-  // 运行网页爬虫
-  ipcMain.handle(
-    'crawler:runCrawler',
-    async (
-      _event,
-      config: { url: string; maxPages?: number; selector?: string; interval?: number }
-    ) => {
-      try {
-        const { url, maxPages = 1, selector, interval = 1000 } = config;
-        if (!url) {
-          throw new Error('未提供爬取起始 URL');
-        }
-
-        const userAgent =
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-        const allJobs: Array<Record<string, unknown>> = [];
-        let pages = 0;
-
-        for (let page = 1; page <= maxPages; page++) {
-          // 构造分页 URL：第 1 页使用原始 URL，后续页尝试追加 page 参数
-          const pageUrl = page === 1 ? url : buildPageUrl(url, page);
-          const response = await fetch(pageUrl, {
-            headers: {
-              'User-Agent': userAgent,
-              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'zh-CN,zh;q=0.9',
-            },
-          });
-          if (!response.ok) {
-            console.warn(`爬取第 ${page} 页失败: HTTP ${response.status}`);
-            break;
-          }
-          const html = await response.text();
-          const jobs = extractJobsFromHtml(html, pageUrl, selector);
-          allJobs.push(...jobs);
-          pages = page;
-
-          if (page < maxPages && interval > 0) {
-            await sleep(interval);
-          }
-        }
-
-        // 提取结果写入 job_listings 表
-        const db = getDb();
-        const stmt = db.prepare(`
-          INSERT OR REPLACE INTO job_listings
-            (id, title, company, location_city, salary, source, source_url, description, collected_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const now = new Date().toISOString();
-        let count = 0;
-        for (const job of allJobs) {
-          stmt.run(
-            job.id || `crawl-${Date.now()}-${count}`,
-            job.title || '未知职位',
-            job.company || '未知公司',
-            job.location || null,
-            job.salary || null,
-            job.source || 'crawler',
-            job.url || null,
-            job.description || null,
-            job.collectedAt || now
-          );
-          count++;
-        }
-        persist();
-
-        return { success: true, count, pages };
-      } catch (error) {
-        console.error('crawler:runCrawler error:', error);
-        throw error;
-      }
-    }
-  );
-
-  // 获取本地已保存的职位列表
-  ipcMain.handle('crawler:getJobs', async () => {
+  // 获取本地已保存的职位列表（支持 limit/offset 分页，默认 200/0）
+  ipcMain.handle('crawler:getJobs', async (_event, options: { limit?: number; offset?: number } = {}) => {
     try {
-      const db = getDb();
-      const stmt = db.prepare('SELECT * FROM job_listings ORDER BY collected_at DESC LIMIT 200');
-      const rows = stmt.all();
+      const limit = Math.min(Math.max(options.limit ?? 200, 1), 1000);
+      const offset = Math.max(options.offset ?? 0, 0);
+      const rows = queryAll(
+        'SELECT * FROM job_listings ORDER BY collected_at DESC LIMIT ? OFFSET ?',
+        [limit, offset]
+      );
       return rows;
     } catch (error) {
       console.error('crawler:getJobs error:', error);
       return [];
     }
+  });
+
+  // 打开内嵌浏览器窗口（用户登录招聘网站、导航到职位列表页）
+  ipcMain.handle('crawler:openBrowser', async (_event, url: string) => {
+    const targetUrl = url || 'https://www.zhipin.com';
+    if (url && !isAllowedJobUrl(url)) {
+      throw new Error('不允许的 URL（非招聘网站域名）');
+    }
+    if (browserWin && !browserWin.isDestroyed()) {
+      browserWin.focus();
+      try {
+        await browserWin.loadURL(targetUrl);
+      } catch {
+        // loadURL 失败不致命（可能用户在手动导航）
+      }
+      return { success: true };
+    }
+    browserWin = new BrowserWindow({
+      width: 1100,
+      height: 800,
+      title: '招聘页面抓取 - 登录后导航到职位列表',
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+      },
+    });
+    browserWin.setMenuBarVisibility(false);
+    browserWin.on('closed', () => {
+      browserWin = null;
+    });
+    try {
+      await browserWin.loadURL(targetUrl);
+    } catch {
+      // 忽略初始加载错误
+    }
+    return { success: true };
+  });
+
+  // 抓取当前浏览器页面的职位信息（截图 → 视觉模型 OCR 结构化）
+  ipcMain.handle('crawler:extractJobsFromPage', async () => {
+    if (!browserWin || browserWin.isDestroyed()) {
+      throw new Error('浏览器窗口未打开，请先点击"打开浏览器"');
+    }
+    const provider = getVisionProvider(); // 未配置会 throw
+    const pageUrl = browserWin.webContents.getURL();
+
+    // 截取当前页面图像并转为 base64 dataURL
+    const nativeImage = await browserWin.webContents.capturePage();
+    const base64DataUrl = nativeImage.toDataURL();
+
+    const systemMsg = '你是招聘信息提取专家，擅长从网页截图中识别职位列表并结构化。必须只返回 JSON 数组，不要任何额外文字、不要 markdown 代码块。';
+    const extractInstruction = '请从这张招聘网页截图中提取职位信息，返回 JSON 数组，每个元素格式：{"title":"职位名称","company":"公司名","location":"工作地点","salary":"薪资（如 15-25k，没有则空字符串）","description":"职位简述（50字内）","url":"链接（截图中看不到则用空字符串）"}。要求：1. 只提取明确的职位条目，过滤导航、广告、登录提示等无关内容 2. 尽可能提取所有可见职位 3. 字段缺失用空字符串 4. 只返回 JSON 数组';
+
+    // 构造 vision 消息：user content 为 text + image_url 数组
+    const response = await callChatCompletions(provider, [
+      { role: 'system', content: systemMsg },
+      { role: 'user', content: [
+        { type: 'text', text: extractInstruction },
+        { type: 'image_url', image_url: { url: base64DataUrl } },
+      ] },
+    ]);
+
+    // 容错解析 JSON：剥离 ```json 代码块
+    let jsonStr = (response.content || '').trim();
+    const m = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (m) jsonStr = m[1].trim();
+    // 提取第一个 [ 到最后一个 ]，兼容模型在数组外添加解释文字
+    const firstBracket = jsonStr.indexOf('[');
+    const lastBracket = jsonStr.lastIndexOf(']');
+    if (firstBracket >= 0 && lastBracket > firstBracket) {
+      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
+    }
+    let jobs: unknown[];
+    try {
+      jobs = JSON.parse(jsonStr);
+    } catch {
+      throw new Error('视觉模型返回格式异常，无法解析为职位列表。请重试。');
+    }
+    if (!Array.isArray(jobs)) {
+      throw new Error('AI 返回的不是数组');
+    }
+    return { success: true, jobs, count: jobs.length, source: pageUrl };
+  });
+
+  // 关闭浏览器窗口
+  ipcMain.handle('crawler:closeBrowser', async () => {
+    if (browserWin && !browserWin.isDestroyed()) {
+      browserWin.close();
+    }
+    browserWin = null;
+    return { success: true };
   });
 }
 
@@ -265,7 +305,7 @@ async function searchBing(source: SearchSource, query: string) {
   url.searchParams.set('textDecorations', 'false');
   url.searchParams.set('mkt', 'zh-CN');
 
-  const response = await fetch(url.toString(), {
+  const response = await fetchWithTimeout(url.toString(), {
     headers: { 'Ocp-Apim-Subscription-Key': apiKey as string },
   });
 
@@ -273,8 +313,8 @@ async function searchBing(source: SearchSource, query: string) {
     throw new Error(`Bing 搜索失败: ${response.status}`);
   }
 
-  const data = await response.json();
-  const items = (data.webPages?.value || []).map((item: any, index: number) => ({
+  const data = await response.json() as { webPages?: { value?: BingResult[] } };
+  const items = (data.webPages?.value || []).map((item, index) => ({
     id: `bing-${Date.now()}-${index}`,
     title: item.name,
     url: item.url,
@@ -294,13 +334,13 @@ async function searchSerpApi(source: SearchSource, query: string) {
   url.searchParams.set('q', query);
   url.searchParams.set('api_key', apiKey as string);
 
-  const response = await fetch(url.toString());
+  const response = await fetchWithTimeout(url.toString());
   if (!response.ok) {
     throw new Error(`SerpApi 搜索失败: ${response.status}`);
   }
 
-  const data = await response.json();
-  const items = (data.jobs_results || []).map((item: any, index: number) => ({
+  const data = await response.json() as { jobs_results?: SerpApiResult[] };
+  const items = (data.jobs_results || []).map((item, index) => ({
     id: `serpapi-${Date.now()}-${index}`,
     title: item.title,
     company: item.company_name,
@@ -321,7 +361,7 @@ async function searchCustom(source: SearchSource, query: string) {
     throw new Error('自定义搜索源未配置 endpoint');
   }
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -334,8 +374,8 @@ async function searchCustom(source: SearchSource, query: string) {
     throw new Error(`自定义搜索失败: ${response.status}`);
   }
 
-  const data = await response.json();
-  const items = (data.results || data.items || []).map((item: any, index: number) => ({
+  const data = await response.json() as { results?: CustomResult[]; items?: CustomResult[] };
+  const items = (data.results || data.items || []).map((item, index) => ({
     id: `custom-${Date.now()}-${index}`,
     title: item.title || item.name,
     url: item.url || item.link,
@@ -345,11 +385,6 @@ async function searchCustom(source: SearchSource, query: string) {
   }));
 
   return items;
-}
-
-/** 简单的延时工具 */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /** 简单的 CSV 解析器，支持双引号包裹的字段 */
@@ -411,97 +446,4 @@ function parseCsv(text: string): Array<Record<string, unknown>> {
     records.push(record);
   }
   return records;
-}
-
-/** 为分页构造 URL，保留已有查询参数 */
-function buildPageUrl(base: string, page: number): string {
-  try {
-    const u = new URL(base);
-    u.searchParams.set('page', String(page));
-    return u.toString();
-  } catch {
-    // 如果 base 不是合法 URL，退化为拼接
-    const sep = base.includes('?') ? '&' : '?';
-    return `${base}${sep}page=${page}`;
-  }
-}
-
-/**
- * 用正则从 HTML 中提取职位信息。
- * 策略：抽取带 href 的 <a> 标签作为职位链接/标题，再用薪资正则与城市关键词补充信息。
- */
-function extractJobsFromHtml(
-  html: string,
-  sourceUrl: string,
-  _selector?: string
-): Array<Record<string, unknown>> {
-  const jobs: Array<Record<string, unknown>> = [];
-  const now = new Date().toISOString();
-
-  // 匹配 <a href="...">文本</a>
-  const anchorRe = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  // 薪资正则：如 15-25k、15k-25k、1-2万、1万-2万、8000-12000
-  const salaryRe = /(\d+(?:\.\d+)?\s*[kK万]?\s*[-~至]\s*\d+(?:\.\d+)?\s*[kK万]?|\d{4,6}\s*[-~至]\s*\d{4,6})/;
-  // 常见城市
-  const cities = [
-    '北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京', '苏州', '西安',
-    '重庆', '天津', '长沙', '青岛', '郑州', '宁波', '昆明', '合肥', '厦门', '大连',
-    '济南', '哈尔滨', '沈阳', '福州', '无锡', '佛山', '东莞', '珠海',
-  ];
-
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = anchorRe.exec(html)) !== null) {
-    const href = match[1];
-    const rawText = match[2]
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .trim();
-    if (!rawText || rawText.length < 2) continue;
-    // 过滤明显非职位链接（如“首页”“登录”“更多”）
-    if (/^(首页|登录|注册|更多|下一页|上一页|关于|联系|版权)$/.test(rawText)) continue;
-
-    // 取链接周围 300 字符上下文，用于提取公司/薪资/城市
-    const contextStart = Math.max(0, match.index - 300);
-    const contextEnd = Math.min(html.length, match.index + rawText.length + 300);
-    const context = html
-      .slice(contextStart, contextEnd)
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ');
-
-    const salaryMatch = context.match(salaryRe);
-    const city = cities.find(c => context.includes(c));
-
-    // 构造绝对链接
-    let link = href;
-    try {
-      link = new URL(href, sourceUrl).toString();
-    } catch {
-      link = href;
-    }
-
-    jobs.push({
-      id: `crawl-${Date.now()}-${index}`,
-      title: rawText.slice(0, 120),
-      company: extractCompany(context) || '未知公司',
-      location: city || null,
-      salary: salaryMatch ? salaryMatch[0].trim() : null,
-      url: link,
-      source: 'crawler',
-      description: rawText,
-      collectedAt: now,
-    });
-    index++;
-  }
-
-  return jobs;
-}
-
-/** 从上下文中粗略提取公司名：优先匹配“公司”关键字附近的文本 */
-function extractCompany(context: string): string | null {
-  const m = context.match(/([\u4e00-\u9fa5A-Za-z0-9·]{2,20}(?:科技|技术|集团|公司|有限|网络|信息|控股|股份))/);
-  return m ? m[1] : null;
 }

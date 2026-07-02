@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Container,
   Title,
@@ -26,6 +26,10 @@ import {
   IconBuildingFactory,
   IconMapPin,
   IconAlertTriangle,
+  IconWorld,
+  IconTarget,
+  IconDeviceFloppy,
+  IconX,
 } from '@tabler/icons-react';
 
 interface JobItem {
@@ -70,6 +74,16 @@ export default function JobDiscovery() {
   const [searchQuery, setSearchQuery] = useState('');
   const [industry, setIndustry] = useState<string | null>(null);
   const [region, setRegion] = useState<string | null>(null);
+  const [browserUrl, setBrowserUrl] = useState('https://www.zhipin.com');
+  const [extracting, setExtracting] = useState(false);
+  const [previewJobs, setPreviewJobs] = useState<JobItem[]>([]);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const mapJob = (raw: Record<string, unknown>): JobItem => ({
     id: String(raw.id ?? 'job-' + Math.random().toString(36).slice(2, 8)),
@@ -89,13 +103,14 @@ export default function JobDiscovery() {
     setError(null);
     try {
       const data = (await window.electronAPI?.getJobListings?.()) as Record<string, unknown>[] | undefined;
+      if (!isMountedRef.current) return;
       if (data && Array.isArray(data)) {
         setJobs(data.map(mapJob));
       }
     } catch (err) {
-      setError('加载本地职位失败：' + (err as Error).message);
+      if (isMountedRef.current) setError('加载本地职位失败：' + (err as Error).message);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   }, []);
 
@@ -115,11 +130,13 @@ export default function JobDiscovery() {
     try {
       const query = searchQuery.trim() || '招聘';
       const results = (await window.electronAPI?.searchJobs?.(query)) as Record<string, unknown>[] | undefined;
+      if (!isMountedRef.current) return;
       const mapped = (results || []).map(mapJob);
       if (mapped.length > 0) {
         if (window.electronAPI?.saveJobs) {
           await window.electronAPI.saveJobs(mapped);
         }
+        if (!isMountedRef.current) return;
         setInfo('搜索到 ' + mapped.length + ' 条职位，已保存到本地。');
         await loadJobs();
       } else {
@@ -127,13 +144,14 @@ export default function JobDiscovery() {
       }
     } catch (err) {
       const msg = (err as Error).message || '';
+      if (!isMountedRef.current) return;
       if (msg.includes('未配置') || msg.includes('搜索源')) {
         setError('未配置搜索源，请先在数据源管理中配置。');
       } else {
         setError('搜索失败：' + msg);
       }
     } finally {
-      setRefreshing(false);
+      if (isMountedRef.current) setRefreshing(false);
     }
   };
 
@@ -144,10 +162,12 @@ export default function JobDiscovery() {
     setLoading(true);
     try {
       const text = await file.text();
+      if (!isMountedRef.current) return;
       const parsed = JSON.parse(text);
       const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.data) ? parsed.data : [parsed];
       if (window.electronAPI?.importData) {
         const result = await window.electronAPI.importData('json', list);
+        if (!isMountedRef.current) return;
         if (result?.success) {
           setInfo('成功导入 ' + result.count + ' 条数据');
           await loadJobs();
@@ -158,9 +178,9 @@ export default function JobDiscovery() {
         setError('导入功能不可用');
       }
     } catch (err) {
-      setError('导入失败：文件格式错误或数据损坏 (' + (err as Error).message + ')');
+      if (isMountedRef.current) setError('导入失败：文件格式错误或数据损坏 (' + (err as Error).message + ')');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
@@ -183,6 +203,71 @@ export default function JobDiscovery() {
       setInfo('已导出 ' + jobs.length + ' 条职位。');
     } catch (err) {
       setError('导出失败：' + (err as Error).message);
+    }
+  };
+
+  const handleOpenBrowser = async () => {
+    setError(null);
+    setInfo(null);
+    try {
+      await window.electronAPI?.openJobBrowser?.(browserUrl.trim() || 'https://www.zhipin.com');
+      if (!isMountedRef.current) return;
+      setInfo('浏览器已打开。请在浏览器中登录招聘网站，导航到职位列表页后，再回来点击"抓取当前页"。');
+    } catch (err) {
+      if (isMountedRef.current) setError('打开浏览器失败：' + (err as Error).message);
+    }
+  };
+
+  const handleExtractJobs = async () => {
+    setExtracting(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const result = await window.electronAPI?.extractJobsFromPage?.();
+      if (!isMountedRef.current) return;
+      if (result?.success && Array.isArray(result.jobs)) {
+        const mapped = (result.jobs as Record<string, unknown>[]).map(mapJob);
+        setPreviewJobs(mapped);
+        setInfo(`成功抓取 ${mapped.length} 条职位。请确认后点击"保存全部到本地"。`);
+      } else {
+        throw new Error('未返回职位数据');
+      }
+    } catch (err) {
+      if (isMountedRef.current) setError('抓取失败：' + (err as Error).message);
+    } finally {
+      if (isMountedRef.current) setExtracting(false);
+    }
+  };
+
+  const handleSavePreview = async () => {
+    if (previewJobs.length === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      if (window.electronAPI?.saveJobs) {
+        const result = await window.electronAPI.saveJobs(previewJobs);
+        if (!isMountedRef.current) return;
+        if (result?.success) {
+          setInfo(`成功保存 ${result.count} 条职位到本地。`);
+          setPreviewJobs([]);
+          await loadJobs();
+        }
+      }
+    } catch (err) {
+      if (isMountedRef.current) setError('保存失败：' + (err as Error).message);
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  };
+
+  const handleCloseBrowser = async () => {
+    try {
+      await window.electronAPI?.closeJobBrowser?.();
+      if (!isMountedRef.current) return;
+      setInfo('浏览器已关闭。');
+      setPreviewJobs([]);
+    } catch (err) {
+      if (isMountedRef.current) setError('关闭浏览器失败：' + (err as Error).message);
     }
   };
 
@@ -289,6 +374,70 @@ export default function JobDiscovery() {
           </Stack>
         </Card>
 
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Group gap="sm" mb="sm" align="center">
+            <IconWorld size={20} color="var(--mantine-color-indigo-6)" />
+            <Title order={4}>视觉 OCR 抓取（截图识别）</Title>
+          </Group>
+          <Text size="sm" c="dimmed" mb="md">
+            打开招聘网站 → 登录 → 导航到职位列表页 → 点击抓取，视觉模型会识别截图提取职位
+          </Text>
+          <Group gap="md" mb="md" align="flex-end">
+            <TextInput
+              label="招聘网站 URL"
+              placeholder="https://www.zhipin.com"
+              value={browserUrl}
+              onChange={(e) => setBrowserUrl(e.currentTarget.value)}
+              leftSection={<IconWorld size={16} />}
+              style={{ flex: 1 }}
+            />
+            <Button variant="light" leftSection={<IconWorld size={16} />} onClick={handleOpenBrowser}>
+              打开浏览器
+            </Button>
+          </Group>
+          <Group gap="xs">
+            <Button leftSection={<IconTarget size={16} />} loading={extracting} onClick={handleExtractJobs}>
+              抓取当前页
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<IconDeviceFloppy size={16} />}
+              disabled={previewJobs.length === 0}
+              onClick={handleSavePreview}
+            >
+              保存全部到本地 ({previewJobs.length})
+            </Button>
+            <Button variant="subtle" color="red" leftSection={<IconX size={16} />} onClick={handleCloseBrowser}>
+              关闭浏览器
+            </Button>
+          </Group>
+          {previewJobs.length > 0 && (
+            <Stack gap="xs" mt="md">
+              <Text size="xs" c="dimmed" fw={500}>
+                预览（前 10 条，共 {previewJobs.length} 条）：
+              </Text>
+              {previewJobs.slice(0, 10).map((job, i) => (
+                <Group key={job.id} gap="xs" align="center">
+                  <Badge size="xs" variant="light" color="gray">
+                    {i + 1}
+                  </Badge>
+                  <Text size="sm" fw={500} lineClamp={1} style={{ flex: 1 }}>
+                    {job.title}
+                  </Text>
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {job.company}
+                  </Text>
+                  {job.salary && (
+                    <Text size="xs" c="orange" fw={500}>
+                      {job.salary}
+                    </Text>
+                  )}
+                </Group>
+              ))}
+            </Stack>
+          )}
+        </Card>
+
         {filteredJobs.length === 0 ? (
           <Card shadow="sm" padding="xl" radius="md" withBorder>
             <Stack align="center" gap="sm" py="xl">
@@ -334,7 +483,7 @@ export default function JobDiscovery() {
                   {job.tags && job.tags.length > 0 && (
                     <Group gap={4}>
                       {job.tags.slice(0, 4).map((tag, i) => (
-                        <Badge key={i} size="xs" variant="light" color="gray">
+                        <Badge key={`tag-${tag}-${i}`} size="xs" variant="light" color="gray">
                           {tag}
                         </Badge>
                       ))}

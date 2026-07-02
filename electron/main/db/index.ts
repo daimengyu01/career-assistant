@@ -146,6 +146,8 @@ CREATE TABLE IF NOT EXISTS job_listings (
 );
 `;
 
+// TODO: sql.js 未提供类型声明文件（也无 @types/sql.js 依赖），
+// 待补充类型声明后改为 import type { Database } from 'sql.js' 并用 Database 替换 any。
 type SqlDatabase = any;
 let db: SqlDatabase | null = null;
 
@@ -301,25 +303,24 @@ function addSampleData() {
   ];
 
   // 插入示例数据
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO companies (id, name, industry, scale, funding_stage, location_city, location_district, stability_score, promotion_clarity, tags, description, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
   for (const company of companies) {
-    stmt.run(
-      company.id,
-      company.name,
-      company.industry,
-      company.scale,
-      company.funding_stage,
-      company.location_city,
-      company.location_district,
-      company.stability_score,
-      company.promotion_clarity,
-      company.tags,
-      company.description,
-      company.source
+    executeRun(
+      `INSERT OR IGNORE INTO companies (id, name, industry, scale, funding_stage, location_city, location_district, stability_score, promotion_clarity, tags, description, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        company.id,
+        company.name,
+        company.industry,
+        company.scale,
+        company.funding_stage,
+        company.location_city,
+        company.location_district,
+        company.stability_score,
+        company.promotion_clarity,
+        company.tags,
+        company.description,
+        company.source,
+      ]
     );
   }
 }
@@ -338,4 +339,88 @@ export function getDb() {
 
 export function persist() {
   saveDatabase();
+}
+
+/**
+ * sql.js 兼容层：查询多行记录。
+ * sql.js 没有 better-sqlite3 的 stmt.all() 方法，
+ * 需要用 prepare → bind → step → getAsObject 循环。
+ */
+export function queryAll(sql: string, params: unknown[] = []): Record<string, unknown>[] {
+  if (!db) throw new Error('Database not initialized');
+  const stmt = (db as any).prepare(sql);
+  stmt.bind(params);
+  const results: Record<string, unknown>[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return results;
+}
+
+/**
+ * sql.js 兼容层：查询单行记录。
+ * sql.js 没有 better-sqlite3 的 stmt.get(params) 方法。
+ */
+export function queryOne(sql: string, params: unknown[] = []): Record<string, unknown> | undefined {
+  if (!db) throw new Error('Database not initialized');
+  const stmt = (db as any).prepare(sql);
+  stmt.bind(params);
+  let row: Record<string, unknown> | undefined;
+  if (stmt.step()) {
+    row = stmt.getAsObject();
+  }
+  stmt.free();
+  return row;
+}
+
+/**
+ * sql.js 兼容层：执行 INSERT/UPDATE/DELETE。
+ * sql.js 的 stmt.run() 只接受数组参数，不接受位置参数。
+ */
+export function executeRun(sql: string, params: unknown[] = []): void {
+  if (!db) throw new Error('Database not initialized');
+  const stmt = (db as any).prepare(sql);
+  if (!stmt) throw new Error(`SQL 准备失败: ${sql}`);
+  try {
+    stmt.bind(params);
+    stmt.step();
+    stmt.reset();
+  } finally {
+    stmt.free();
+  }
+}
+
+/**
+ * 事务封装：包裹批量写操作，失败时回滚。
+ */
+export function runInTransaction<T>(fn: () => T): T {
+  const database = getDb();
+  database.run('BEGIN');
+  try {
+    const result = fn();
+    database.run('COMMIT');
+    return result;
+  } catch (err) {
+    try { database.run('ROLLBACK'); } catch { /* ignore */ }
+    throw err;
+  }
+}
+
+/**
+ * 关闭数据库，释放 WASM 内存。
+ */
+export function closeDatabase(): void {
+  if (db) {
+    try { (db as any).close(); } catch { /* ignore */ }
+    db = null;
+  }
+}
+
+/**
+ * 安全 JSON 解析：解析失败返回 fallback，不抛错。
+ */
+export function safeJsonParse<T>(str: string | null | undefined, fallback: T): T {
+  if (!str) return fallback;
+  try { return JSON.parse(str) as T; } catch { return fallback; }
 }

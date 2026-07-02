@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Title, Text, Stack, Button, Group, Card, Badge, SimpleGrid, Alert, Tabs } from '@mantine/core';
+import React, { useState, useEffect, useRef } from 'react';
+import { Container, Title, Text, Stack, Button, Group, SimpleGrid, Alert, Tabs } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { IconSparkles, IconRefresh } from '@tabler/icons-react';
 import { useCompanyStore } from '../../stores/useCompanyStore';
@@ -15,9 +15,26 @@ const RecommendationList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [recommendations, setRecommendations] = useState<Array<{ company: typeof companies[0]; matchScore: number; reasons: string[] }>>([]);
+  type Dimension = { score: number; reason: string };
+  type RecommendationItem = {
+    company: typeof companies[0];
+    matchScore: number;
+    reasons: string[];
+    dimensions?: { stability: Dimension; growth: Dimension; culture: Dimension; location: Dimension };
+    matchFactors?: string[];
+    risks?: string[];
+    actions?: string[];
+  };
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>('match');
   const [notice, setNotice] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const generateRuleBasedRecommendations = () => {
     const scored = companies.map((company) => {
@@ -99,6 +116,22 @@ const RecommendationList: React.FC = () => {
     setGenerating(true);
     setNotice(null);
     try {
+      // 前置检查：给出明确的错误提示，而非笼统的"AI 功能暂不可用"
+      if (!window.electronAPI?.chatWithAI) {
+        setNotice('AI 功能未就绪，请检查配置');
+        setGenerating(false);
+        return;
+      }
+      if (!profile) {
+        setNotice('请先完善个人情况（MBTI/兴趣/风险偏好）后再使用 AI 推荐');
+        setGenerating(false);
+        return;
+      }
+      if (companies.length === 0) {
+        setNotice('请先添加公司后再生成推荐');
+        setGenerating(false);
+        return;
+      }
       if (window.electronAPI?.chatWithAI && profile && companies.length > 0) {
         const companyList = companies
           .map(
@@ -106,7 +139,7 @@ const RecommendationList: React.FC = () => {
               `- ${c.name}（行业:${c.industry}, 稳定性:${c.stabilityScore}, 晋升清晰度:${c.promotionClarity}, 规模:${c.scale}, 标签:${c.tags.join('、')}）`,
           )
           .join('\n');
-        const prompt = `你是一位职业规划专家。请基于以下用户信息和公司列表，为每家公司生成职业推荐评分与理由。
+        const prompt = `你是一位资深职业规划专家。请基于以下用户信息和公司列表，为每家公司生成详细的职业推荐分析。
 
 用户信息：
 - MBTI性格：${profile.personality.mbti || '未知'}
@@ -116,12 +149,32 @@ const RecommendationList: React.FC = () => {
 公司列表：
 ${companyList}
 
-请为每家公司给出匹配度评分(0-100整数)、推荐理由和匹配因素。请严格使用以下JSON格式返回（仅返回JSON数组，不要包含其他文字）：
-[{"company":"公司名称","score":85,"reasons":["理由1","理由2"],"matchFactors":["因素1","因素2"]}]`;
+请为每家公司给出匹配度评分(0-100整数)和详细分析。请严格使用以下JSON格式返回（仅返回JSON数组，不要包含其他文字、不要 markdown 代码块）：
+[{
+  "company": "公司名称",
+  "score": 85,
+  "dimensions": {
+    "stability": {"score": 85, "reason": "稳定性评分具体依据"},
+    "growth": {"score": 80, "reason": "成长性评分具体依据"},
+    "culture": {"score": 75, "reason": "文化匹配评分具体依据"},
+    "location": {"score": 90, "reason": "地域匹配评分具体依据"}
+  },
+  "reasons": ["总评理由1", "总评理由2"],
+  "matchFactors": ["你的XX特质与公司的XX特点匹配"],
+  "risks": ["潜在风险提示"],
+  "actions": ["建议行动1", "建议行动2"]
+}]
+要求：
+1. 每个维度的 score 是 0-100 整数，reason 必须具体说明评分依据
+2. matchFactors 必须关联用户特质（MBTI/兴趣/风险偏好）和公司特点
+3. risks 要有具体的风险点，不要笼统
+4. actions 要有可操作的步骤
+5. 只返回 JSON 数组`;
 
         const response = await window.electronAPI.chatWithAI([
           { role: 'user', content: prompt },
         ]);
+        if (!isMountedRef.current) return;
 
         try {
           // 容错解析：尝试提取 JSON 内容（兼容 markdown 代码块包裹）
@@ -130,16 +183,33 @@ ${companyList}
           if (codeBlockMatch) {
             jsonStr = codeBlockMatch[1].trim();
           }
-          const aiRecommendations = JSON.parse(jsonStr) as Array<{
+          // 提取第一个 [ 到最后一个 ]，兼容模型在数组外添加解释文字
+          const firstBracket = jsonStr.indexOf('[');
+          const lastBracket = jsonStr.lastIndexOf(']');
+          if (firstBracket >= 0 && lastBracket > firstBracket) {
+            jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
+          }
+          const parsed = JSON.parse(jsonStr);
+          // 运行时校验：AI 必须返回 JSON 数组
+          if (!Array.isArray(parsed)) throw new Error('AI 返回格式错误');
+          const aiRecommendations = parsed as Array<{
             company: string;
             score: number;
             reasons: string[];
-            matchFactors: string[];
+            dimensions?: {
+              stability?: Dimension;
+              growth?: Dimension;
+              culture?: Dimension;
+              location?: Dimension;
+            };
+            matchFactors?: string[];
+            risks?: string[];
+            actions?: string[];
           }>;
 
           // 将 AI 返回结果映射回推荐结构（按公司名称匹配）
           const mapped = aiRecommendations
-            .map((ai) => {
+            .map((ai): RecommendationItem | null => {
               const company = companies.find(
                 (c) =>
                   c.name === ai.company ||
@@ -147,13 +217,27 @@ ${companyList}
                   ai.company.includes(c.name),
               );
               if (!company) return null;
+              const dims = ai.dimensions;
+              const fullDims =
+                dims && dims.stability && dims.growth && dims.culture && dims.location
+                  ? (dims as {
+                      stability: Dimension;
+                      growth: Dimension;
+                      culture: Dimension;
+                      location: Dimension;
+                    })
+                  : undefined;
               return {
                 company,
                 matchScore: Math.min(100, Math.max(0, ai.score)),
                 reasons: Array.isArray(ai.reasons) ? ai.reasons : [],
+                dimensions: fullDims,
+                matchFactors: Array.isArray(ai.matchFactors) ? ai.matchFactors : undefined,
+                risks: Array.isArray(ai.risks) ? ai.risks : undefined,
+                actions: Array.isArray(ai.actions) ? ai.actions : undefined,
               };
             })
-            .filter((item): item is NonNullable<typeof item> => item !== null);
+            .filter((item): item is RecommendationItem => item !== null);
 
           if (mapped.length > 0) {
             mapped.sort((a, b) => b.matchScore - a.matchScore);
@@ -175,10 +259,12 @@ ${companyList}
       }
     } catch (err) {
       // AI 调用失败，降级为规则匹配
-      setRecommendations(generateRuleBasedRecommendations());
-      setNotice('AI 刷新失败，已使用规则匹配生成推荐');
+      if (isMountedRef.current) {
+        setRecommendations(generateRuleBasedRecommendations());
+        setNotice('AI 刷新失败，已使用规则匹配生成推荐');
+      }
     } finally {
-      setGenerating(false);
+      if (isMountedRef.current) setGenerating(false);
     }
   };
 
@@ -212,7 +298,6 @@ ${companyList}
   }
 
   return (
-    <>
     <Container size="lg" py="xl">
       <Group justify="space-between" mb="xl">
         <div>
@@ -253,6 +338,10 @@ ${companyList}
               company={item.company}
               matchScore={item.matchScore}
               reasons={item.reasons}
+              dimensions={item.dimensions}
+              matchFactors={item.matchFactors}
+              risks={item.risks}
+              actions={item.actions}
               onClick={() => navigate(`/companies/${item.company.id}`)}
             />
           ))}
@@ -260,57 +349,9 @@ ${companyList}
       )}
 
       {activeTab === 'career' && (
-        <Card withBorder shadow="sm" radius="md" padding="lg">
-          <Stack gap="md">
-            <Title order={4}>职业发展路径建议</Title>
-            <Text c="dimmed" size="sm">
-              基于你的评估结果和当前市场情况，为你规划职业发展路径
-            </Text>
-
-            <Stack gap="md">
-              <Card withBorder p="md" radius="md">
-                <Group gap="md">
-                  <div style={{ flex: 1 }}>
-                    <Text fw={500} mb="xs">短期目标 (1-2年)</Text>
-                    <Text size="sm" c="dimmed">
-                      进入行业头部公司积累经验，建立专业能力
-                    </Text>
-                  </div>
-                  <Badge color="blue" variant="light">成长阶段</Badge>
-                </Group>
-              </Card>
-
-              <Card withBorder p="md" radius="md">
-                <Group gap="md">
-                  <div style={{ flex: 1 }}>
-                    <Text fw={500} mb="xs">中期目标 (3-5年)</Text>
-                    <Text c="dimmed">
-                      晋升到管理岗位或成为领域专家，提升行业影响力
-                    </Text>
-                  </div>
-                  <Badge color="green" variant="light">发展阶段</Badge>
-                </Group>
-              </Card>
-
-              <Card withBorder p="md" radius="md">
-                <Group gap="md">
-                  <div style={{ flex: 1 }}>
-                    <Text fw={500} mb="xs">长期目标 (5年以上)</Text>
-                    <Text c="dimmed">
-                      成为行业资深人士或创业，实现职业理想
-                    </Text>
-                  </div>
-                  <Badge color="violet" variant="light">成熟阶段</Badge>
-                </Group>
-              </Card>
-            </Stack>
-          </Stack>
-        </Card>
+        <CareerPathVisualization />
       )}
     </Container>
-
-    <CareerPathVisualization />
-    </>
   );
 };
 

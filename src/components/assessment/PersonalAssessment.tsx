@@ -81,6 +81,13 @@ const PersonalAssessment: React.FC = () => {
             p="lg"
             radius="md"
             withBorder
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                navigate(item.link);
+              }
+            }}
             style={{ cursor: 'pointer', height: '100%' }}
             onClick={() => navigate(item.link)}
           >

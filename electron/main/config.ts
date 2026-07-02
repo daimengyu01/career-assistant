@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 /**
  * 应用配置管理
@@ -45,7 +46,6 @@ export function getEncryptionKey(): string {
 
 // 生成随机加密密钥（首次运行时使用）
 export function generateEncryptionKey(): string {
-  const crypto = require('crypto');
   return crypto.randomBytes(32).toString('hex');
 }
 
@@ -53,5 +53,5 @@ export function generateEncryptionKey(): string {
 export function saveEncryptionKey(key: string): void {
   const configPath = path.join(app.getPath('userData'), '.secure-config.json');
   const config = { encryptionKey: key };
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
 }

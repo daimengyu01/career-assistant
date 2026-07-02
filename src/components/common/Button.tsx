@@ -1,9 +1,7 @@
 import React from 'react';
 import { ButtonProps, Button as MantineButton } from '@mantine/core';
 
-interface AppButtonProps extends ButtonProps {
-  loading?: boolean;
-}
+type AppButtonProps = ButtonProps;
 
 const Button: React.FC<AppButtonProps> = ({ loading, children, ...props }) => {
   return (

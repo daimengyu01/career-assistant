@@ -1,48 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Container, Title, Text, Stack, Button, Group, TextInput, Select, Textarea, NumberInput, Card, Alert, Grid } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
-import { IconArrowLeft, IconPlus } from '@tabler/icons-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { IconArrowLeft, IconPlus, IconSparkles } from '@tabler/icons-react';
 import { useCompanyStore } from '../../stores/useCompanyStore';
 import type { Company } from '../../types/company';
+import { INDUSTRIES, SCALES, FUNDING_STAGES } from '../../constants/company';
 
-const industries = [
-  '互联网/科技',
-  '金融/银行',
-  '教育/培训',
-  '医疗/健康',
-  '制造业',
-  '咨询/服务',
-  '零售/电商',
-  '媒体/广告',
-  '房地产/建筑',
-  '能源/环保',
-  '其他',
-];
-
-const scales = [
-  { value: 'startup', label: '初创公司' },
-  { value: 'medium', label: '中型企业' },
-  { value: 'large', label: '大型企业' },
-];
-
-const fundingStages = [
-  '种子轮',
-  '天使轮',
-  'A轮',
-  'B轮',
-  'C轮',
-  'D轮及以上',
-  '已上市',
-  '未融资',
-];
+type FormState = {
+  name: string;
+  industry: string;
+  scale: string;
+  fundingStage: string;
+  location: { city: string; district: string };
+  stabilityScore: number;
+  promotionClarity: number;
+  tags: string;
+  description: string;
+};
 
 const CompanyForm: React.FC = () => {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const isEdit = Boolean(id);
   const addCompany = useCompanyStore((state) => state.addCompany);
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     name: '',
     industry: '',
     scale: 'startup',
@@ -54,6 +40,26 @@ const CompanyForm: React.FC = () => {
     description: '',
   });
 
+  useEffect(() => {
+    if (isEdit && id) {
+      window.electronAPI?.getCompany?.(id).then((c) => {
+        if (c) {
+          setForm({
+            name: c.name,
+            industry: c.industry,
+            scale: c.scale,
+            fundingStage: c.fundingStage || '',
+            location: c.location,
+            stabilityScore: c.stabilityScore,
+            promotionClarity: c.promotionClarity,
+            tags: (c.tags || []).join(', '),
+            description: c.description || '',
+          });
+        }
+      });
+    }
+  }, [id]);
+
   const handleChange = (field: string, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -63,6 +69,62 @@ const CompanyForm: React.FC = () => {
       ...prev,
       location: { ...prev.location, [field]: value },
     }));
+  };
+
+  const handleAiAnalyze = async () => {
+    if (!form.name.trim()) {
+      setError('请先输入公司名称');
+      return;
+    }
+    setAnalyzing(true);
+    setError(null);
+    setAiNote(null);
+    try {
+      const result = await window.electronAPI?.aiAnalyzeCompany?.(form.name.trim());
+      if (!result?.success || !result.data) {
+        throw new Error('AI 未返回数据');
+      }
+      const d = result.data as Record<string, unknown>;
+      const rawIndustry = (d.industry as string) || '';
+      const matchedIndustry = INDUSTRIES.includes(rawIndustry) ? rawIndustry : (rawIndustry ? '其他' : '');
+      const scores = d.scores as
+        | { stability?: number; promotion?: number; industry?: number; regional?: number; overall?: number }
+        | undefined;
+      const reasons = Array.isArray(d.reasons) ? (d.reasons as string[]) : [];
+      const tagsArr = Array.isArray(d.tags) ? (d.tags as string[]) : [];
+      const desc = (d.description as string) || '';
+      let aiExtra = '';
+      if (scores) {
+        aiExtra += `\n\n【AI 评估说明】\n综合评分：${scores.overall ?? '-'}/100（稳定性 ${scores.stability ?? '-'}、晋升 ${scores.promotion ?? '-'}、行业 ${scores.industry ?? '-'}、地域 ${scores.regional ?? '-'}）`;
+      }
+      if (reasons.length) {
+        aiExtra += '\n' + reasons.map((r: string) => `- ${r}`).join('\n');
+      }
+      setForm((prev) => ({
+        ...prev,
+        name: (d.name as string) || prev.name,
+        industry: matchedIndustry || prev.industry,
+        scale: ['startup', 'medium', 'large'].includes(d.scale as string) ? (d.scale as string) : prev.scale,
+        fundingStage: (d.fundingStage as string) || prev.fundingStage,
+        location: {
+          city: (d.city as string) || prev.location.city,
+          district: (d.district as string) || prev.location.district,
+        },
+        stabilityScore: typeof d.stabilityScore === 'number' ? d.stabilityScore : prev.stabilityScore,
+        promotionClarity: typeof d.promotionClarity === 'number' ? d.promotionClarity : prev.promotionClarity,
+        tags: tagsArr.join(','),
+        description: (desc + aiExtra).trim(),
+      }));
+      setAiNote(
+        matchedIndustry === '其他' && rawIndustry
+          ? `AI 返回行业「${rawIndustry}」不在预设列表，已归为「其他」，请确认`
+          : 'AI 已填充表单，请审核修改后保存'
+      );
+    } catch (err) {
+      setError('AI 分析失败：' + (err as Error).message);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,7 +147,7 @@ const CompanyForm: React.FC = () => {
       }
 
       const company: Company = {
-        id: Date.now().toString(),
+        id: isEdit ? id! : Date.now().toString(),
         name: form.name,
         industry: form.industry,
         scale: form.scale as Company['scale'],
@@ -99,10 +161,13 @@ const CompanyForm: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
 
-      addCompany(company);
-
-      if (window.electronAPI?.saveCompany) {
-        await window.electronAPI.saveCompany(company);
+      if (isEdit) {
+        await useCompanyStore.getState().updateCompany(id!, company);
+      } else {
+        addCompany(company);
+        if (window.electronAPI?.saveCompany) {
+          await window.electronAPI.saveCompany(company);
+        }
       }
 
       navigate('/companies');
@@ -118,7 +183,7 @@ const CompanyForm: React.FC = () => {
       <Group justify="space-between" mb="xl">
         <div>
           <Title order={2} mb="xs">
-            录入公司信息
+            {isEdit ? '编辑公司信息' : '录入公司信息'}
           </Title>
           <Text c="dimmed">
             添加目标公司信息，便于后续评估和推荐
@@ -138,6 +203,33 @@ const CompanyForm: React.FC = () => {
       <form onSubmit={handleSubmit}>
         <Stack gap="lg">
           <Card withBorder shadow="sm" radius="md" padding="lg">
+            <Group gap="sm" mb="sm" align="center">
+              <IconSparkles size={20} color="var(--mantine-color-blue-6)" />
+              <Title order={4}>AI 自动分析</Title>
+            </Group>
+            <Text size="sm" c="dimmed" mb="md">
+              只需输入公司名称，AI 会自动获取并填充行业、规模、融资、城市、评分等信息。填充后您可审核修改后保存。
+            </Text>
+            <Group gap="md" align="flex-end">
+              <TextInput
+                label="公司名称"
+                placeholder="例如：字节跳动"
+                value={form.name}
+                onChange={(e) => handleChange('name', e.currentTarget.value)}
+                style={{ flex: 1 }}
+              />
+              <Button leftSection={<IconSparkles size={16} />} loading={analyzing} onClick={handleAiAnalyze}>
+                AI 分析并填表
+              </Button>
+            </Group>
+            {aiNote && (
+              <Alert color="blue" mt="md" title="提示">
+                {aiNote}
+              </Alert>
+            )}
+          </Card>
+
+          <Card withBorder shadow="sm" radius="md" padding="lg">
             <Title order={4} mb="md">基本信息</Title>
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -153,10 +245,10 @@ const CompanyForm: React.FC = () => {
                 <Select
                   label="所属行业"
                   placeholder="请选择行业"
-                  data={industries}
+                  data={INDUSTRIES}
                   searchable
                   value={form.industry}
-                  onChange={(val) => handleChange('industry', val)}
+                  onChange={(val) => handleChange('industry', val || '')}
                   required
                 />
               </Grid.Col>
@@ -164,19 +256,19 @@ const CompanyForm: React.FC = () => {
                 <Select
                   label="公司规模"
                   placeholder="请选择规模"
-                  data={scales}
+                  data={SCALES}
                   value={form.scale}
-                  onChange={(val) => handleChange('scale', val)}
+                  onChange={(val) => handleChange('scale', val || 'startup')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <Select
                   label="融资阶段"
                   placeholder="请选择融资阶段"
-                  data={fundingStages}
+                  data={FUNDING_STAGES}
                   clearable
                   value={form.fundingStage}
-                  onChange={(val) => handleChange('fundingStage', val)}
+                  onChange={(val) => handleChange('fundingStage', val || '')}
                 />
               </Grid.Col>
             </Grid>

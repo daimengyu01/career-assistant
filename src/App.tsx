@@ -1,14 +1,17 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { Container, Title, Text, Stack, Card, SimpleGrid, ThemeIcon, Button, AppShell, NavLink, Box, Group, Burger, ScrollArea } from '@mantine/core';
+import { Container, Title, Text, Stack, Card, SimpleGrid, ThemeIcon, Button, AppShell, NavLink, Group, Burger, ScrollArea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
-  IconBrain, IconBuilding, IconSparkles, IconSettings,
-  IconUser, IconFileText, IconBriefcase, IconStar,
-  IconDatabase, IconRobot, IconDownload, IconChartBar,
-  IconMapPin, IconUsers, IconHome,
+  IconBrain, IconBuilding, IconSparkles,
+  IconUser, IconFileText, IconBriefcase,
+  IconDatabase, IconRobot, IconDownload,
+  IconHome,
 } from '@tabler/icons-react';
-import { useState } from 'react';
 
+import { useUserStore } from './stores/useUserStore';
+import { useCompanyStore } from './stores/useCompanyStore';
+import { useAssessmentStore } from './stores/useAssessmentStore';
 import PersonalAssessment from './components/assessment/PersonalAssessment';
 import MBTIQuestionnaire from './components/assessment/MBTIQuestionnaire';
 import BigFiveQuestionnaire from './components/assessment/BigFiveQuestionnaire';
@@ -25,6 +28,7 @@ import AssessmentResult from './components/assessment/AssessmentResult';
 import ApiKeySettings from './components/settings/ApiKeySettings';
 import DataSourceManager from './components/settings/DataSourceManager';
 import DataBackup from './components/settings/DataBackup';
+import DisclaimerDialog from './components/common/DisclaimerDialog';
 
 const navItems = [
   { label: '首页', icon: IconHome, link: '/' },
@@ -97,6 +101,12 @@ export default function App() {
   const [opened, { toggle }] = useDisclosure();
   const location = useLocation();
 
+  useEffect(() => {
+    useUserStore.getState().loadFromBackend?.();
+    useCompanyStore.getState().loadFromBackend?.();
+    useAssessmentStore.getState().loadFromBackend?.();
+  }, []);
+
   return (
     <AppShell
       header={{ height: 56 }}
@@ -132,6 +142,8 @@ export default function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
+        {/* 免责公告：首次启动自动弹出；设置页可通过 reopenDisclaimer() 重新打开 */}
+        <DisclaimerDialog />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/assessment" element={<PersonalAssessment />} />
@@ -141,6 +153,7 @@ export default function App() {
           <Route path="/assessment/result" element={<AssessmentResult />} />
           <Route path="/assessment/career-match" element={<CareerPathVisualization />} />
           <Route path="/self-intro" element={<SelfIntro />} />
+          <Route path="/profile" element={<SelfIntro />} />
           <Route path="/resume" element={<ResumeUpload />} />
           <Route path="/jobs" element={<JobDiscovery />} />
           <Route path="/companies" element={<CompanyList />} />
@@ -148,6 +161,7 @@ export default function App() {
           <Route path="/companies/:id" element={<CompanyDetail />} />
           <Route path="/companies/:id/edit" element={<CompanyForm />} />
           <Route path="/recommendations" element={<RecommendationList />} />
+          <Route path="/settings" element={<Navigate to="/settings/api" replace />} />
           <Route path="/settings/api" element={<ApiKeySettings />} />
           <Route path="/settings/datasource" element={<DataSourceManager />} />
           <Route path="/settings/backup" element={<DataBackup />} />

@@ -1,15 +1,47 @@
-import React from 'react';
-import { Card, Text, Badge, Stack, Group, Progress, Divider } from '@mantine/core';
+import React, { useState } from 'react';
+import { Card, Text, Badge, Stack, Group, Progress, Divider, Box, Button } from '@mantine/core';
 import type { Company } from '../../types/company';
+
+interface Dimension {
+  score: number;
+  reason: string;
+}
 
 interface MatchScoreCardProps {
   company: Company;
   matchScore: number;
   reasons: string[];
+  dimensions?: {
+    stability: Dimension;
+    growth: Dimension;
+    culture: Dimension;
+    location: Dimension;
+  };
+  matchFactors?: string[];
+  risks?: string[];
+  actions?: string[];
   onClick?: () => void;
 }
 
-const MatchScoreCard: React.FC<MatchScoreCardProps> = ({ company, matchScore, reasons, onClick }) => {
+const dimensionLabels: Record<string, string> = {
+  stability: '稳定性',
+  growth: '成长性',
+  culture: '文化匹配',
+  location: '地域匹配',
+};
+
+const MatchScoreCard: React.FC<MatchScoreCardProps> = ({
+  company,
+  matchScore,
+  reasons,
+  dimensions,
+  matchFactors,
+  risks,
+  actions,
+  onClick,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'green';
     if (score >= 60) return 'yellow';
@@ -22,12 +54,24 @@ const MatchScoreCard: React.FC<MatchScoreCardProps> = ({ company, matchScore, re
     return '一般匹配';
   };
 
+  const visibleReasons = expanded ? reasons : reasons.slice(0, 2);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (onClick && e.key === 'Enter') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <Card
       withBorder
       shadow="sm"
       padding="lg"
       radius="md"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? handleKeyDown : undefined}
       style={{ cursor: onClick ? 'pointer' : 'default', height: '100%' }}
       onClick={onClick}
     >
@@ -61,16 +105,92 @@ const MatchScoreCard: React.FC<MatchScoreCardProps> = ({ company, matchScore, re
           {getScoreLabel(matchScore)}
         </Text>
 
+        {dimensions && (
+          <>
+            <Divider my="xs" label="分维度评分" labelPosition="center" />
+            <Stack gap="xs">
+              {Object.entries(dimensions).map(([key, dim]) => (
+                <Box key={key}>
+                  <Group justify="space-between" mb={2}>
+                    <Text size="xs" fw={500}>
+                      {dimensionLabels[key] || key}
+                    </Text>
+                    <Text
+                      size="xs"
+                      fw={500}
+                      c={getScoreColor(dim.score) === 'green' ? 'teal' : getScoreColor(dim.score) === 'yellow' ? 'orange' : 'red'}
+                    >
+                      {dim.score}
+                    </Text>
+                  </Group>
+                  <Progress value={dim.score} color={getScoreColor(dim.score)} size="xs" radius="xl" mb={2} />
+                  <Text size="xs" c="dimmed" lineClamp={2}>
+                    {dim.reason}
+                  </Text>
+                </Box>
+              ))}
+            </Stack>
+          </>
+        )}
+
+        {matchFactors && matchFactors.length > 0 && (
+          <>
+            <Divider my="xs" label="匹配因素" labelPosition="center" />
+            <Stack gap={4}>
+              {matchFactors.map((factor, i) => (
+                <Text key={`factor-${i}`} size="xs" c="dimmed">
+                  • {factor}
+                </Text>
+              ))}
+            </Stack>
+          </>
+        )}
+
         {reasons.length > 0 && (
           <>
-            <Divider my="xs" />
+            <Divider my="xs" label="推荐理由" labelPosition="center" />
             <Stack gap="xs">
-              <Text size="xs" fw={500} c="dimmed">
-                推荐理由:
-              </Text>
-              {reasons.slice(0, 3).map((reason, index) => (
-                <Text key={index} size="xs" c="dimmed">
+              {visibleReasons.map((reason, index) => (
+                <Text key={`reason-${index}`} size="xs" c="dimmed">
                   • {reason}
+                </Text>
+              ))}
+              {reasons.length > 2 && (
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpanded(!expanded);
+                  }}
+                >
+                  {expanded ? '收起' : `展开全部 ${reasons.length} 条`}
+                </Button>
+              )}
+            </Stack>
+          </>
+        )}
+
+        {risks && risks.length > 0 && (
+          <>
+            <Divider my="xs" label="风险提示" labelPosition="center" />
+            <Stack gap={4}>
+              {risks.map((risk, i) => (
+                <Text key={`risk-${i}`} size="xs" c="red">
+                  • {risk}
+                </Text>
+              ))}
+            </Stack>
+          </>
+        )}
+
+        {actions && actions.length > 0 && (
+          <>
+            <Divider my="xs" label="行动建议" labelPosition="center" />
+            <Stack gap={4}>
+              {actions.map((action, i) => (
+                <Text key={`action-${i}`} size="xs" c="blue">
+                  • {action}
                 </Text>
               ))}
             </Stack>

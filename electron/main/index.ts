@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, shell, dialog } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { initDatabase, persist } from './db/index';
 import { registerAssessmentHandlers } from './ipc/assessment';
 import { registerCompanyHandlers } from './ipc/company';
@@ -10,6 +11,27 @@ import { registerBackupHandlers } from './ipc/backup';
 import { registerUserHandlers } from './ipc/user';
 
 let mainWindow: BrowserWindow | null = null;
+
+// 全局异常处理：防止进程静默崩溃
+process.on('uncaughtException', (err) => {
+  console.error('uncaughtException:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('unhandledRejection:', err);
+});
+
+// 单实例锁：防止多开导致数据库冲突
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
 
 const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged;
 
@@ -54,17 +76,20 @@ function createMenu() {
     {
       label: '帮助',
       submenu: [
-        { 
+        {
           label: '新手入门指南',
           click: () => {
-            const { shell } = require('electron');
-            shell.openPath(path.join(__dirname, '../../GETTING_STARTED.md'));
+            const filePath = path.join(__dirname, '../../GETTING_STARTED.md');
+            if (fs.existsSync(filePath)) {
+              shell.openExternal('file:///' + filePath.replace(/\\/g, '/'));
+            } else {
+              dialog.showErrorBox('文件不存在', `未找到: ${filePath}`);
+            }
           }
         },
-        { 
+        {
           label: '项目文档',
           click: () => {
-            const { shell } = require('electron');
             shell.openExternal('https://github.com/daimengyu01/career-assistant');
           }
         }
@@ -131,4 +156,14 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// 退出前持久化数据库并关闭连接
+app.on('before-quit', () => {
+  try {
+    persist();
+    closeDatabase();
+  } catch (err) {
+    console.error('退出持久化失败:', err);
+  }
 });

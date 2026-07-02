@@ -4,21 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { IconPlus, IconSearch, IconFilter, IconBuilding } from '@tabler/icons-react';
 import { useCompanyStore } from '../../stores/useCompanyStore';
 import type { Company, CompanyFilters } from '../../types/company';
+import { INDUSTRIES } from '../../constants/company';
 import Loading from '../common/Loading';
-
-const industries = [
-  '互联网/科技',
-  '金融/银行',
-  '教育/培训',
-  '医疗/健康',
-  '制造业',
-  '咨询/服务',
-  '零售/电商',
-  '媒体/广告',
-  '房地产/建筑',
-  '能源/环保',
-  '其他',
-];
 
 const CompanyList: React.FC = () => {
   const navigate = useNavigate();
@@ -32,6 +19,7 @@ const CompanyList: React.FC = () => {
   const itemsPerPage = 9;
 
   useEffect(() => {
+    let mounted = true;
     const loadCompanies = async () => {
       setLoading(true);
       setError(null);
@@ -39,16 +27,20 @@ const CompanyList: React.FC = () => {
       try {
         if (window.electronAPI?.getCompanies) {
           const data = await window.electronAPI.getCompanies();
-          setCompanies(data as Company[]);
+          if (!mounted) return;
+          setCompanies(Array.isArray(data) ? (data as Company[]) : []);
         }
       } catch (err) {
-        setError('加载公司列表失败');
+        if (mounted) setError('加载公司列表失败');
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     loadCompanies();
+    return () => {
+      mounted = false;
+    };
   }, [setCompanies]);
 
   const filteredCompanies = useMemo(() => {
@@ -66,6 +58,13 @@ const CompanyList: React.FC = () => {
   }, [filteredCompanies, page]);
 
   const totalPages = Math.ceil(filteredCompanies.length / itemsPerPage);
+
+  // 分页越界保护：筛选后页码超出总页数时回到第 1 页
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(1);
+    }
+  }, [totalPages, page]);
 
   const handleFilterChange = (key: keyof CompanyFilters, value: string | number | undefined) => {
     setFilters({ ...filters, [key]: value });
@@ -108,7 +107,7 @@ const CompanyList: React.FC = () => {
         <Group gap="md" wrap="wrap">
           <Select
             placeholder="筛选行业"
-            data={industries}
+            data={INDUSTRIES}
             clearable
             value={filters.industry}
             onChange={(val) => handleFilterChange('industry', val || undefined)}
@@ -164,6 +163,13 @@ const CompanyList: React.FC = () => {
                 shadow="sm"
                 padding="lg"
                 radius="md"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    navigate(`/companies/${company.id}`);
+                  }
+                }}
                 style={{ cursor: 'pointer', height: '100%' }}
                 onClick={() => navigate(`/companies/${company.id}`)}
               >
